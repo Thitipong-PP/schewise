@@ -41,34 +41,62 @@ export function LoginForm() {
   }
 
   return (
-    <form className="connection auth-form" onSubmit={submit}>
-      <label htmlFor="email">Email</label>
-      <input
-        id="email"
-        name="email"
-        type="email"
-        autoComplete="username"
-        required
-        maxLength={254}
-        disabled={pending}
-      />
-      <label htmlFor="password">Password</label>
-      <input
-        id="password"
-        name="password"
-        type="password"
-        autoComplete="current-password"
-        required
-        maxLength={256}
-        disabled={pending}
-      />
+    <form
+      className="login-form"
+      onSubmit={submit}
+      aria-labelledby="login-form-title"
+      aria-busy={pending}
+    >
+      <div className="login-form-heading">
+        <span className="login-form-kicker">Workspace access</span>
+        <h2 id="login-form-title">Sign in</h2>
+      </div>
+      <div className="login-field">
+        <label htmlFor="email">Email</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          autoComplete="username"
+          required
+          maxLength={254}
+          disabled={pending}
+        />
+      </div>
+      <div className="login-field">
+        <label htmlFor="password">Password</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          autoComplete="current-password"
+          required
+          maxLength={256}
+          disabled={pending}
+        />
+      </div>
       {error && (
-        <p className="error" role="alert">
+        <p className="login-error" role="alert">
           {error}
         </p>
       )}
       <button type="submit" disabled={pending}>
-        {pending ? "Signing in..." : "Sign in"}
+        <span>{pending ? "Signing in..." : "Sign in"}</span>
+        <svg
+          width="20"
+          height="20"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden="true"
+        >
+          <path
+            d="M5 12h14m-6-6 6 6-6 6"
+            stroke="currentColor"
+            strokeWidth="1.7"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
       </button>
     </form>
   );
