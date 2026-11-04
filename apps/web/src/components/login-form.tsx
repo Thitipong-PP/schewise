@@ -2,16 +2,19 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { CircleAlert, Eye, EyeOff, LoaderCircle, LogIn } from "lucide-react";
 import { authMutation } from "@/lib/auth-client";
 
 export function LoginForm() {
   const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState("");
+  const [passwordVisible, setPasswordVisible] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
+    setPasswordVisible(false);
     setError("");
     const data = new FormData(event.currentTarget);
     try {
@@ -41,34 +44,70 @@ export function LoginForm() {
   }
 
   return (
-    <form className="connection auth-form" onSubmit={submit}>
-      <label htmlFor="email">Email</label>
-      <input
-        id="email"
-        name="email"
-        type="email"
-        autoComplete="username"
-        required
-        maxLength={254}
-        disabled={pending}
-      />
-      <label htmlFor="password">Password</label>
-      <input
-        id="password"
-        name="password"
-        type="password"
-        autoComplete="current-password"
-        required
-        maxLength={256}
-        disabled={pending}
-      />
+    <form
+      className="login-form"
+      onSubmit={submit}
+      aria-labelledby="login-title"
+      aria-busy={pending}
+    >
+      <div className="login-field">
+        <label htmlFor="email">Email</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          autoComplete="username"
+          required
+          maxLength={254}
+          disabled={pending}
+        />
+      </div>
+      <div className="login-field">
+        <label htmlFor="password">Password</label>
+        <div className="login-password-field">
+          <input
+            id="password"
+            name="password"
+            type={passwordVisible ? "text" : "password"}
+            autoComplete="current-password"
+            required
+            maxLength={256}
+            disabled={pending}
+          />
+          <button
+            className="login-password-toggle"
+            type="button"
+            aria-label={passwordVisible ? "Hide password" : "Show password"}
+            title={passwordVisible ? "Hide password" : "Show password"}
+            aria-controls="password"
+            disabled={pending}
+            onClick={() => setPasswordVisible((visible) => !visible)}
+          >
+            {passwordVisible ? (
+              <EyeOff size={18} aria-hidden="true" />
+            ) : (
+              <Eye size={18} aria-hidden="true" />
+            )}
+          </button>
+        </div>
+      </div>
       {error && (
-        <p className="error" role="alert">
-          {error}
+        <p className="login-error" role="alert">
+          <CircleAlert size={16} aria-hidden="true" />
+          <span>{error}</span>
         </p>
       )}
-      <button type="submit" disabled={pending}>
-        {pending ? "Signing in..." : "Sign in"}
+      <button className="login-submit" type="submit" disabled={pending}>
+        {pending ? (
+          <LoaderCircle
+            className="login-spinner"
+            size={17}
+            aria-hidden="true"
+          />
+        ) : (
+          <LogIn size={17} aria-hidden="true" />
+        )}
+        <span>{pending ? "Signing in..." : "Sign in"}</span>
       </button>
     </form>
   );
