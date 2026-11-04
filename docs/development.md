@@ -91,11 +91,13 @@ started.
 The API mounts the repository and caches Go modules and build output in named
 volumes. At startup it compiles and then executes the API binary directly, so
 container stop signals reach the server for graceful shutdown. It does not use a
-file watcher: run `docker compose restart api` after Go edits. The web app
-mounts `apps/web/src` for hot reload; other files are copied into the image, so
-rebuild after changing dependencies, Next.js configuration, or other files
-outside `src`. Dependencies are installed inside the Linux image, not copied
-from host `node_modules`.
+file watcher: run `docker compose restart api` after Go edits. The development
+build omits embedded VCS metadata so differences between the host checkout's
+ownership and the container user do not prevent startup. The web app mounts
+`apps/web/src` for hot reload; other files are copied into the image, so rebuild
+after changing dependencies, Next.js configuration, or other files outside
+`src`. Dependencies are installed inside the Linux image, not copied from host
+`node_modules`.
 
 ```sh
 docker compose logs -f
