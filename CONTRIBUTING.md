@@ -25,15 +25,17 @@ the [roadmap](docs/roadmap.md) before starting a new capability.
    `make build` and `make smoke` with ports 8080/3000 available and the default
    API URL. Run container checks when changing Docker files.
 5. Update documentation and configuration examples if behavior changes. Commit
-   the pnpm lockfile when dependencies change. A `go.sum` will be needed when
-   external Go modules are introduced; the current API uses only the standard
-   library.
+   the pnpm lockfile and Go module/checksum files when dependencies change. For
+   authentication or SQL changes, run `make integration-test` against isolated
+   PostgreSQL test schemas and `make auth-smoke` through the local HTTPS
+   gateway.
 6. Open a pull request using the template. Explain the problem, resulting
    behavior, validation, and any limitations.
 
 Use `make fmt` to apply formatting. See [development](docs/development.md) for
-direct commands and troubleshooting. No database, AI account, or deployment
-access is required to contribute to the starter.
+direct commands and troubleshooting. No target database, AI account, or
+deployment access is required. Authentication work requires the local
+application Postgres; see [authentication setup](docs/authentication.md).
 
 ## Branches and commits
 

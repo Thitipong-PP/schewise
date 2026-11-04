@@ -1,166 +1,152 @@
 # Development guide
 
-## Tooling and commands
+Use Go 1.27.3, Node.js 26, pnpm 12.16.1, and Docker Compose. `go.mod`, `go.sum`,
+and `pnpm-lock.yaml` record dependencies. The race detector needs CGO and a C
+compiler (Xcode command-line tools on macOS; GCC/Clang on Linux).
 
-Use Go 1.27.3 (the preferred toolchain in `go.mod`), Node.js 26, and pnpm
-12.16.1. The root Go module covers the backend; the pnpm workspace covers
-JavaScript tools and `apps/web`. There are no third-party Go modules yet, so
-`go.sum` is absent.
+## Commands
 
-`make setup` runs `go mod download` and `pnpm install --frozen-lockfile`. The Go
-command may download the preferred toolchain automatically. Install pnpm using
-`npm install --global pnpm@12.16.1` if it is not already available.
+Run from the repository root:
 
-| Task                | Make command     | Direct command                                                        |
-| ------------------- | ---------------- | --------------------------------------------------------------------- |
-| Run API             | `make dev-api`   | `go run ./cmd/api`                                                    |
-| Run web             | `make dev-web`   | `pnpm dev:web`                                                        |
-| Format              | `make fmt`       | `gofmt -w cmd internal` and `pnpm format`                             |
-| Check Go formatting | `make fmt-check` | `gofmt -l cmd internal` (must print no files) and `pnpm format:check` |
-| Lint                | `make lint`      | `go vet ./...` and `pnpm lint`                                        |
-| Test API            | `make test`      | `go test -race -count=1 ./...`                                        |
-| Type check web      | part of `check`  | `pnpm typecheck`                                                      |
-| Build               | `make build`     | `go build -trimpath -o bin/schewise-api ./cmd/api` and `pnpm build`   |
-| Integration check   | `make smoke`     | `bash scripts/smoke.sh`                                               |
-| Dependency audit    | n/a              | `pnpm audit --audit-level high`                                       |
+| Command                 | Behavior                                                      |
+| ----------------------- | ------------------------------------------------------------- |
+| `make help`             | List commands                                                 |
+| `make init`             | Generate ignored local credentials without overwriting them   |
+| `make setup`            | Download Go dependencies and install the frozen pnpm lockfile |
+| `make dev-api`          | Read local environment and run the Go API                     |
+| `make dev-web`          | Read local environment and run Next.js                        |
+| `make fmt`              | Apply gofmt and Prettier                                      |
+| `make fmt-check`        | Check formatting without editing                              |
+| `make lint`             | Go vet and ESLint                                             |
+| `make test`             | Go race tests; DB tests skip unless explicitly enabled        |
+| `make integration-test` | Run auth/SQL tests in isolated Postgres schemas               |
+| `make check`            | Formatting, lint, Go tests, and TypeScript                    |
+| `make build`            | Build API/migration binaries and production web app           |
+| `make smoke`            | Launch production builds and verify page/API/auth integration |
+| `make auth-smoke`       | Verify the running HTTPS stack with local CA validation       |
+| `make migrate`          | Apply application migrations (also done at API startup)       |
+| `make migrate-status`   | Show application migration version                            |
+| `make docker-up`        | Build/start the complete development stack                    |
+| `make docker-down`      | Stop/remove containers; preserve data/CA/cache volumes        |
+| `make local-ca`         | Export the HTTPS gateway's public CA certificate              |
 
-`pnpm typecheck` generates Next.js route types before running TypeScript, so it
-also works in a fresh checkout before a production build. The race detector
-needs CGO and a C compiler (Xcode command-line tools on macOS; GCC/Clang on
-Linux).
+`pnpm lint`, `pnpm typecheck`, and `pnpm build` operate on the web package.
+`pnpm format` covers supported repository files; gofmt covers Go. Next.js type
+generation runs before TypeScript checking.
 
 ## Configuration
 
-The API uses process environment variables and does not read dotenv files:
+`make init` creates `.env` with unique local passwords. Make wrappers use Node's
+dotenv parser without shell evaluation; process environment overrides the file.
+The Go programs read only process environment. Never log or commit `.env`.
+
+| Variable                  | Default / purpose                                                                            |
+| ------------------------- | -------------------------------------------------------------------------------------------- |
+| `SCHEWISE_HTTP_ADDR`      | API bind address, default `127.0.0.1:8080`                                                   |
+| `SCHEWISE_ORIGIN`         | Exact browser/CSRF HTTPS origin, default `https://localhost:8443`                            |
+| `SCHEWISE_ADMIN_EMAIL`    | First-install Administrator email                                                            |
+| `SCHEWISE_ADMIN_PASSWORD` | First-install password; never resets an existing account                                     |
+| `SCHEWISE_SESSION_TTL`    | Absolute authenticated lifetime; default `24h`, allowed `1m`–`720h`                          |
+| `SCHEWISE_DATABASE_URL`   | Optional full application Postgres URL, overrides PG variables                               |
+| `PGHOST` / `PGPORT`       | Native app database destination, default `127.0.0.1:5432`                                    |
+| `PGDATABASE` / `PGUSER`   | Native application database/name, default `schewise`                                         |
+| `PGPASSWORD`              | Application database password; required unless a full URL is set                             |
+| `PGSSLMODE`               | Default `disable` for local private Docker networking; configure verified TLS for remote DBs |
+| `POSTGRES_PASSWORD`       | Docker database initialization superuser password; not used by API                           |
+| `API_BASE_URL`            | Next.js-to-Go destination, default `http://127.0.0.1:8080`                                   |
+
+The supplied Compose configuration provisions database/role `schewise`, uses
+`db:5432` for the API, and `api:8080` for Next.js. Only the bootstrap Postgres
+account is a superuser. Custom external database deployment requires a Compose
+override or independently supplied process configuration.
+
+`apps/web/.env.local` can override Next.js settings. Restart after configuration
+changes; Next.js rewrites are read at dev startup or production build time.
+Never put secrets in `NEXT_PUBLIC_*` variables.
+
+## Docker and HTTPS
+
+Follow [authentication setup](authentication.md) for CA trust and credentials.
+Browser login uses https://localhost:8443, with Secure cookies in every mode.
+The CA is not automatically added to the host trust store.
+
+The API mounts the repository, compiles at startup without VCS stamping, then
+executes the binary so shutdown signals reach Fiber. Restart it after Go edits.
+The web mounts `apps/web/src` for hot reload; rebuild after dependency/config or
+other non-source changes. Postgres, Caddy certificates, and Go caches use named
+volumes. Routine `docker compose down` preserves them. Do not delete volumes to
+fix a failed test or reset a password.
+
+For native API/web development, start the database with
+`docker compose up -d --wait db`, then run the two `make dev-*` commands. For
+browser HTTPS with native services, use your trusted local reverse proxy with
+`/api/*` pointing to port 8080 and other routes to port 3000, preserving Origin.
+The supplied gateway targets Compose service names; use the complete Compose
+stack for the ready-made HTTPS workflow.
+
+## Database tests and production smoke
 
 ```sh
-SCHEWISE_HTTP_ADDR=127.0.0.1:8081 go run ./cmd/api
+docker compose up -d --wait db
+make integration-test
 ```
 
-Next.js reads `apps/web/.env.local` automatically:
+Integration tests create a random `auth_test_*` schema, apply migrations there,
+and drop only that schema afterward. They do not clear application users,
+sessions, or audits. Alternatively supply an isolated PostgreSQL URL through
+`SCHEWISE_TEST_DATABASE_URL`; CI does this and runs the suite with the race
+detector. Tests cover rotation, CSRF, permissions, revocation, expiry, bootstrap
+idempotency, audit rollback, rate limits, cookie flags, and log redaction.
+
+To test production builds locally, keep Postgres running and stop native API/web
+servers or `docker compose stop gateway web api` first:
 
 ```sh
-cp apps/web/.env.example apps/web/.env.local
-# Set API_BASE_URL=http://127.0.0.1:8081 in that file if changing the API port.
-pnpm dev:web
-```
-
-Restart Next.js after changing configuration. Rewrites are resolved at dev
-startup or production build time, so production changes require `pnpm build`
-again. Never put database credentials or AI provider keys in `NEXT_PUBLIC_*`
-variables.
-
-## Production-build smoke check
-
-This tests the local production build; it does not deploy anything:
-
-```sh
-# Stop any running development services first.
 make check
+make integration-test
 make build
 make smoke
 ```
 
-Use the default `API_BASE_URL=http://127.0.0.1:8080` for the web build. Remove
-local overrides from the shell and `.env.local` before this check. The script
-starts the API and Next.js on loopback ports 8080/3000, checks the page and both
-direct/proxied health responses, verifies unsupported mutations return 405, and
-stops its child processes. It needs Bash, curl, Node.js, and the build output. A
-successful smoke check verifies server integration; it is not a browser
-interaction test.
+Ports 8080/3000 must be free. Build with the default API destination. This smoke
+script tests internal HTTP integration using explicit test cookie headers;
+actual browser auth uses HTTPS. Run the stack again, export its CA, and run
+`make auth-smoke` for certificate-validated HTTPS. Both smoke commands need
+valid installation credentials matching the existing Administrator. They write
+only session and audit activity. The API's automatic migration/bootstrap
+behavior is the same as normal startup.
 
-To run built services manually in separate terminals:
+## CI and repository settings
 
-```sh
-./bin/schewise-api
-pnpm --filter @schewise/web start
-```
+- **Go:** formatting, vet, race tests including real Postgres integration,
+  build.
+- **Web and integration:** frozen installation, formatting, ESLint, TypeScript,
+  dependency audit, production builds, and auth/page/API smoke with Postgres.
+- **Development containers:** generate temporary installation credentials,
+  build, start Postgres/API/web/Caddy, trust the CA per process, test HTTPS
+  auth, and verify a zero-exit-code API shutdown.
 
-## Docker development
+Actions are pinned to full commits and repository permissions are read-only.
+Dependabot tracks Actions, npm, Go, and Docker dependencies. Repository
+rulesets, private vulnerability reporting, dependency alerts, and optional
+code-owner enforcement still require GitHub settings.
 
-```sh
-docker compose config --quiet
-docker compose up --build
-```
-
-The API listens on `0.0.0.0:8080` inside its container. Next.js forwards to
-`http://api:8080` through the Compose network. Published host ports bind to
-`127.0.0.1`. The API health check gates web startup. No database service is
-started.
-
-The API mounts the repository and caches Go modules and build output in named
-volumes. At startup it compiles and then executes the API binary directly, so
-container stop signals reach the server for graceful shutdown. It does not use a
-file watcher: run `docker compose restart api` after Go edits. The development
-build omits embedded VCS metadata so differences between the host checkout's
-ownership and the container user do not prevent startup. The web app mounts
-`apps/web/src` for hot reload; other files are copied into the image, so rebuild
-after changing dependencies, Next.js configuration, or other files outside
-`src`. Dependencies are installed inside the Linux image, not copied from host
-`node_modules`.
-
-```sh
-docker compose logs -f
-docker compose down
-```
-
-These images are development-only and are not hardened release artifacts. CD,
-registries, TLS, and hosting are outside this milestone.
-
-## CI and GitHub repository settings
-
-The `CI` workflow checks:
-
-- **Go:** formatting, vet, race tests, and binary build.
-- **Web and integration:** frozen dependency installation, repository
-  formatting, ESLint, generated route types/TypeScript, dependency audit,
-  production build, and local API/web smoke check.
-- **Development containers:** Compose validation, both image builds, startup,
-  API/web requests through the container network, and clean API shutdown.
-
-Workflow permissions are read-only. Actions use full commit hashes; Dependabot
-proposes updates for Actions, npm, Go modules, and Docker base images.
-JavaScript dependencies are locked; third-party Go dependencies should add a
-committed `go.sum` when introduced. Dependabot does not replace periodic Go/Node
-toolchain and vulnerability review.
-
-The following require GitHub repository settings and are not enabled by files in
-this scaffold:
-
-1. Enable private vulnerability reporting and verify the link in `SECURITY.md`.
-2. Enable available dependency graph, Dependabot alerts, and secret scanning
-   features.
-3. After the first successful CI run, add a `main` ruleset requiring PRs and the
-   `Go`, `Web and integration`, and `Development containers` checks. Decide
-   review and bypass requirements to fit the number of active maintainers.
-4. Optionally require code-owner review; `CODEOWNERS` alone only requests
-   reviews.
-
-## Dependency compatibility and initial audit
-
-As of 2026-11-04, `pnpm audit` reports one moderate advisory in transitive
-development dependencies:
-[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249) in
-`minimatch`, brought in by the ESLint toolchain. The installed graph has no high
-or critical advisories in that audit. CI blocks high and critical findings and
-continues to display lower-severity findings.
-
-ESLint is pinned to 9.39.5 because the current Next.js lint plugins' peer ranges
-do not yet support ESLint 10. Upgrading minimatch across major versions with a
-blanket override can break consumers using its older API. Follow upstream lint
-dependency updates rather than suppressing the advisory or forcing that
-override.
+The initial npm audit reports one moderate transitive lint dependency advisory,
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249). CI
+blocks high/critical findings. ESLint 9 matches the current Next.js plugins'
+peer ranges; do not force incompatible major overrides to suppress advisories.
 
 ## Troubleshooting
 
-- **Connection check fails:** confirm `curl http://127.0.0.1:8080/api/v1/health`
-  works, then test the same path on port 3000. Check `API_BASE_URL` and restart
-  or rebuild Next.js if it changed.
-- **Port already in use:** stop the existing service or configure another
-  API/web port for development. Smoke checks require the defaults.
-- **Go download fails:** ensure `proxy.golang.org` and `sum.golang.org` are
-  reachable, or install the preferred Go version manually.
-- **pnpm lockfile differs:** use the version in `packageManager`; run
-  `pnpm install` intentionally and commit the resulting lockfile change.
-- **Docker cannot connect:** start Docker Engine/Desktop and confirm
-  `docker info` succeeds before building or running Compose.
+- **Certificate warning:** export and explicitly trust your local CA; never
+  bypass validation. Use `--cacert .local/root.crt` for curl.
+- **Login/CSRF failure:** use the exact HTTPS origin and current installation
+  password. Changing bootstrap variables does not reset an existing account.
+- **Database failure:** inspect `docker compose logs db api`; confirm Postgres
+  is healthy and password values still match the initialized volume.
+- **Port conflict:** stop the existing service. Smoke checks need 8080/3000
+  free.
+- **Go/network failure:** allow the official Go module proxy/checksum services
+  or install the pinned toolchain manually.
+- **Lockfile mismatch:** use the pnpm version in `packageManager`, intentionally
+  update dependencies, and commit the lockfile.

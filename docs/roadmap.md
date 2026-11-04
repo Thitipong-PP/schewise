@@ -13,11 +13,21 @@ The roadmap can evolve as use cases are clarified.
       updates.
 - [x] Architecture and decision documentation.
 
+## Authentication foundation (implemented before target connections)
+
+- [x] Dedicated application Postgres with Goose migrations.
+- [x] UUID users, Administrator-only registration, first-install env bootstrap.
+- [x] Argon2id passwords, database sessions, revocation, expiry, and CSRF.
+- [x] HTTPS login UI and protected Next.js pages.
+- [x] Fiber HTTP, Zap request/lifecycle logs, and transactional audit events.
+- [x] Real Postgres integration tests and HTTPS authentication smoke checks.
+- [ ] Custom roles/permissions, invitations, MFA, verification, and recovery.
+
 ## Phase 1: connections and schema understanding
 
 - Select the first supported engine and define a connector boundary.
 - Define connection profiles and environment metadata.
-- Design secret storage and choose application metadata persistence.
+- Design secret storage for target database connection profiles.
 - Introspect schemas and present tables, relations, constraints, and types.
 - Define safe access modes and an initial synthetic database fixture.
 
@@ -62,7 +72,7 @@ The roadmap can evolve as use cases are clarified.
 
 ## Open decisions
 
-First database engine; metadata persistence; schema versus data snapshot scope;
-branch/merge semantics; authentication; credential storage; AI providers and
+First target database engine; schema versus data snapshot scope; branch/merge
+semantics; custom permissions; target credential storage; AI providers and
 privacy; mock protocol compatibility; and future hosting. None are selected by
 the foundation scaffold.
