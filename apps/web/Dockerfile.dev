@@ -1,0 +1,11 @@
+FROM node:26-bookworm-slim
+
+RUN npm install --global pnpm@12.16.1
+WORKDIR /workspace
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml ./
+COPY apps/web/package.json ./apps/web/package.json
+RUN pnpm install --frozen-lockfile
+COPY . .
+
+EXPOSE 3000
+CMD ["pnpm", "--filter", "@schewise/web", "exec", "next", "dev", "--hostname", "0.0.0.0"]

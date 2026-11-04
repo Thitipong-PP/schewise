@@ -1,0 +1,20 @@
+{
+  "name": "schewise",
+  "private": true,
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=26 <27"
+  },
+  "scripts": {
+    "dev:web": "pnpm --filter @schewise/web dev",
+    "build": "pnpm --filter @schewise/web build",
+    "lint": "pnpm --filter @schewise/web lint",
+    "typecheck": "pnpm --filter @schewise/web typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.9.10"
+  }
+}
