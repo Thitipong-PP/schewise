@@ -3,64 +3,94 @@ package main
 import (
 	"context"
 	"errors"
-	"log/slog"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
+	"github.com/Thitipong-PP/schewise/internal/auth"
+	"github.com/Thitipong-PP/schewise/internal/config"
+	"github.com/Thitipong-PP/schewise/internal/database"
 	"github.com/Thitipong-PP/schewise/internal/httpapi"
+	"github.com/gofiber/fiber/v3"
+	"go.uber.org/zap"
 )
 
 func main() {
-	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	if err := run(ctx, logger); err != nil {
-		logger.Error("API stopped", "error", err)
+	logger, err := zap.NewProduction()
+	if err != nil {
 		os.Exit(1)
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	err = run(ctx, logger)
+	stop()
+	if err != nil {
+		logger.Error("API stopped", zap.Error(err))
+		_ = logger.Sync()
+		os.Exit(1)
+	}
+	_ = logger.Sync()
 }
 
-func run(ctx context.Context, logger *slog.Logger) error {
-	addr := os.Getenv("SCHEWISE_HTTP_ADDR")
-	if addr == "" {
-		addr = "127.0.0.1:8080"
+func run(ctx context.Context, logger *zap.Logger) error {
+	cfg, err := config.Load()
+	if err != nil {
+		return err
 	}
-
-	server := &http.Server{
-		Addr:              addr,
-		Handler:           httpapi.NewHandler(),
-		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout:       15 * time.Second,
-		WriteTimeout:      15 * time.Second,
-		IdleTimeout:       60 * time.Second,
-		MaxHeaderBytes:    1 << 20,
+	startup, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+	db, err := database.Open(startup, cfg.DatabaseURL)
+	if err != nil {
+		return errors.New("application database connection failed; check database configuration and availability")
 	}
-
+	defer func() { _ = db.Close() }()
+	if err := database.Migrate(startup, db); err != nil {
+		return errors.New("application database migration failed")
+	}
+	logger.Info("database.migrated")
+	service, err := auth.New(db, logger, cfg.SessionTTL)
+	if err != nil {
+		return errors.New("authentication initialization failed")
+	}
+	if _, err := service.Bootstrap(startup, cfg.AdminEmail, cfg.AdminPassword); err != nil {
+		return errors.New("administrator bootstrap failed; verify installation credentials and database availability")
+	}
+	app := httpapi.NewApp(httpapi.Config{Auth: service, Logger: logger, Origin: cfg.Origin})
+	cleanupCtx, cleanupCancel := context.WithCancel(ctx)
+	defer cleanupCancel()
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-cleanupCtx.Done():
+				return
+			case <-ticker.C:
+				cleanup, done := context.WithTimeout(cleanupCtx, 10*time.Second)
+				if err := service.Cleanup(cleanup); err != nil {
+					logger.Error("session.cleanup_failed")
+				} else {
+					logger.Info("session.cleanup_completed")
+				}
+				done()
+			}
+		}
+	}()
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("API listening", "address", addr)
-		errCh <- server.ListenAndServe()
+		logger.Info("API listening", zap.String("address", cfg.Address))
+		errCh <- app.Listen(cfg.Address, fiber.ListenConfig{DisableStartupMessage: true})
 	}()
-
 	select {
 	case err := <-errCh:
 		return err
 	case <-ctx.Done():
 		logger.Info("API shutting down")
 	}
-
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := server.Shutdown(shutdownCtx); err != nil {
-		_ = server.Close()
-		return err
+	shutdown, done := context.WithTimeout(context.Background(), 10*time.Second)
+	defer done()
+	if err := app.ShutdownWithContext(shutdown); err != nil {
+		return errors.New("API shutdown failed")
 	}
-	if err := <-errCh; err != nil && !errors.Is(err, http.ErrServerClosed) {
-		return err
-	}
-	return nil
+	return <-errCh
 }

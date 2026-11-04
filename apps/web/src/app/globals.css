@@ -105,6 +105,32 @@ footer {
   font-size: 0.875rem;
 }
 
+.auth-page {
+  max-width: 600px;
+}
+.auth-form {
+  display: grid;
+  gap: 12px;
+}
+.auth-form label {
+  font-weight: 600;
+}
+.auth-form input {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--background);
+  color: var(--text);
+  font: inherit;
+}
+.auth-form button {
+  margin-top: 12px;
+}
+.error {
+  color: #b32935;
+}
+
 @media (prefers-color-scheme: dark) {
   :root {
     --background: #101619;
@@ -117,5 +143,8 @@ footer {
 
   button {
     color: #101619;
+  }
+  .error {
+    color: #ffb0b8;
   }
 }

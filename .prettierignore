@@ -8,3 +8,4 @@ go.mod
 go.sum
 *.go
 apps/web/next-env.d.ts
+.local/

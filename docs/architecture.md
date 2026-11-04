@@ -1,88 +1,71 @@
 # Architecture
 
-## Current implementation
-
-Schewise starts as a monorepo with one Go module at the root and a pnpm
-workspace for the Next.js web app. It runs entirely on localhost and has no
-persistence or external service requirements.
+Schewise is a monorepo with one Go module and a pnpm workspace. Go owns
+identity, authorization, application metadata, and future database/AI domain
+behavior. Next.js owns presentation and page redirects.
 
 ```mermaid
 flowchart LR
-    Browser[Browser] -->|HTTP :3000| Web[Next.js web app]
-    Web -->|Proxy /api/v1/*| API[Go API :8080]
-    Developer[Local API client] -->|HTTP| API
+    Browser -->|HTTPS localhost:8443| Caddy
+    Caddy -->|Pages| Next[Next.js]
+    Caddy -->|/api/*| API[Go / Fiber]
+    Next -->|Identity and API proxy| API
+    API -->|pgx + Goose| AppDB[(Application Postgres)]
+    API --> Zap[Redacted JSON stdout logs]
 ```
 
-The only API endpoint is `GET /api/v1/health` (also supports `HEAD`). It reports
-process liveness with `{"status":"ok","service":"schewise-api"}`. Other routes
-return 404; unsupported methods return 405. It does not imply that a database is
-connected or healthy.
+The application database contains roles, users, sessions, audit events, and
+migration state. It is separate from any future target database that a user
+connects. Application migrations must never be applied to a target connection.
 
-## Why these boundaries
+## Boundaries and choices
 
-- **Monorepo:** API contracts, UI, documentation, and integration checks can
-  change in one pull request. A single pnpm workspace is sufficient without an
-  extra orchestration tool.
-- **One root Go module:** simplifies `go test ./...`, tooling, and imports.
-  `internal/` prevents external consumers from depending on implementation
-  packages. `cmd/api` owns startup, environment configuration, signal handling,
-  and graceful shutdown.
-- **Go standard-library HTTP:** provides routing, timeouts, logging, and testing
-  support for the current scope without framework coupling. Domain packages and
-  connector interfaces should emerge from actual use cases.
-- **Next.js App Router and strict TypeScript:** provide the web application
-  boundary with Server Components by default and small Client Components for
-  interaction. The starter uses plain CSS and system fonts to avoid an
-  unnecessary UI dependency or font download during builds.
-- **Same-origin API proxy:** browser requests use `/api/v1/*`; Next.js forwards
-  them to Go. This avoids a separate browser CORS configuration for local use.
-  Domain logic and future database/AI access remain in Go.
-- **Reproducible tooling:** exact JavaScript dependency versions and a committed
-  lockfile; a preferred Go toolchain; pinned GitHub Actions and automated
-  updates. Node and Docker base-image release lines receive patch updates.
-- **Local first:** no authentication, application database, queue, AI SDK, or
-  deployment target is selected in this phase. Development containers are an
-  optional way to run the same two services.
+- **Monorepo:** API, UI, contracts, and integration checks can change in one PR.
+- **One Go module:** root tooling covers all packages; `internal/` keeps
+  implementation private. `cmd/api` owns startup/shutdown; `cmd/migrate` exposes
+  application migration up/status commands.
+- **Fiber and Zap:** selected for this authentication milestone. HTTP handlers
+  delegate password/session/account operations to `internal/auth`. Logs use Zap
+  with explicit safe fields, never body/header/query dumps.
+- **Postgres and pgx:** persist application identity/session/audit state through
+  database/sql, shared with Goose. The application role owns only its database
+  and has no cluster administration privileges.
+- **Goose:** embedded SQL migrations with advisory locking, applied at startup
+  or explicitly through the CLI. Successful mutations and audit events share a
+  database transaction.
+- **Next.js:** App Router, strict TypeScript, server-side identity checks, and
+  `proxy.ts` page protection. A client cookie's presence alone grants no access.
+  Go authorizes protected APIs independently.
+- **HTTPS:** the development Caddy gateway issues local certificates. Client CA
+  trust is explicit. Cookies remain Secure/HttpOnly/SameSite=Lax, with opaque
+  sessions stored as digests and synchronizer CSRF protection.
+- **Roles:** Administrator is the only seeded role and can create accounts and
+  revoke sessions. Public registration and custom role editing are absent.
 
-See [ADR 0001](adr/0001-foundation.md) for the initial decision record.
+See [ADR 0001](adr/0001-foundation.md) for the original foundation and
+[ADR 0002](adr/0002-authentication.md) for the HTTP, storage, and auth update.
+[Authentication](authentication.md) documents guarantees and deployment limits.
 
-## Database versioning: design direction
+## Database versioning direction
 
-The product should support Git-like review and history, but databases have
-different state and recovery constraints. Keep these concepts distinct in future
-designs:
+Git-like review/history is the product direction; database recovery has
+additional constraints. These remain future capabilities:
 
-| Concept             | Meaning                                                                   |
-| ------------------- | ------------------------------------------------------------------------- |
-| Schema snapshot     | Versioned metadata describing tables, columns, constraints, and relations |
-| Schema diff         | A comparison of two schema snapshots                                      |
-| Migration plan      | Ordered operations intended to move an environment toward a target schema |
-| Data snapshot       | A separate, potentially large and sensitive copy of database records      |
-| Environment state   | Observed schema and applied change history for a particular connection    |
-| Restore or rollback | An explicit recovery operation whose safety depends on available state    |
+| Concept            | Meaning                                                        |
+| ------------------ | -------------------------------------------------------------- |
+| Schema snapshot    | Versioned tables, columns, relations, types, and constraints   |
+| Schema diff        | Comparison between schema snapshots                            |
+| Migration plan     | Ordered operations targeting an environment's schema           |
+| Data snapshot      | Separate, potentially sensitive copies of records              |
+| Environment state  | Observed schema and applied change history for a connection    |
+| Restore / rollback | Explicit recovery with engine- and backup-dependent guarantees |
 
-Checking out an old schema snapshot does not restore deleted records.
-Destructive changes may require a backup, a compensating migration, or may be
-irreversible. Future designs must show a plan, target environment, drift,
-required privileges, and data-loss implications before execution. Cross-engine
-transaction and DDL behavior must be evaluated per connector.
+An old schema snapshot cannot recover deleted records. Future execution must
+show the environment, privileges, drift, plan, and data-loss implications.
+Transaction and DDL behavior must be evaluated per connector. Environment names
+such as staging are separate from a Git staging area.
 
-Environment names such as development, staging, and production are product
-concepts, separate from a Git staging area or an uncommitted schema change.
-
-## Future capability boundaries
-
-These are directions, not existing packages or committed implementations:
-
-- Connections and environment metadata, with scoped secret handling.
-- Schema introspection, canonical snapshots, diffs, and history.
-- Change planning, review, execution, drift detection, and recovery.
-- Mock datasets and connectable mock database endpoints for API development.
-- Schema mapping and data harmonization with validation and lineage.
-- AI assistance for explanations and proposals, with explicit provider/data
-  policies and human review before mutations.
-- Collaboration, access control, project sharing, and audit trails.
-
-Choose the first supported database engine, metadata store, snapshot format, and
-AI provider only when the corresponding capability is designed. Record material
-decisions as ADRs.
+Target connectors, schema history, change execution, mock database endpoints,
+mapping/harmonization, AI assistance, and collaborative project permissions
+remain future work. Record material designs as ADRs and extend the
+[roadmap](roadmap.md) without treating planned features as implemented.

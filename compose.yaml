@@ -1,12 +1,40 @@
 name: schewise
 
 services:
+  db:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: schewise
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Run make init first}
+      APP_DATABASE_PASSWORD: ${PGPASSWORD:?Run make init first}
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/10-app.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d schewise"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    init: true
+
   api:
     build:
       context: .
       dockerfile: cmd/api/Dockerfile.dev
     environment:
       SCHEWISE_HTTP_ADDR: "0.0.0.0:8080"
+      SCHEWISE_ORIGIN: ${SCHEWISE_ORIGIN:-https://localhost:8443}
+      SCHEWISE_ADMIN_EMAIL: ${SCHEWISE_ADMIN_EMAIL:?Run make init first}
+      SCHEWISE_ADMIN_PASSWORD: ${SCHEWISE_ADMIN_PASSWORD:?Run make init first}
+      SCHEWISE_SESSION_TTL: ${SCHEWISE_SESSION_TTL:-24h}
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: schewise
+      PGUSER: schewise
+      PGPASSWORD: ${PGPASSWORD:?Run make init first}
     ports:
       - "127.0.0.1:8080:8080"
     volumes:
@@ -14,6 +42,9 @@ services:
       - go-modules:/go/pkg/mod
       - go-build:/root/.cache/go-build
     init: true
+    depends_on:
+      db:
+        condition: service_healthy
     healthcheck:
       test:
         [
@@ -26,7 +57,7 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
-      start_period: 30s
+      start_period: 90s
 
   web:
     build:
@@ -34,6 +65,7 @@ services:
       dockerfile: apps/web/Dockerfile.dev
     environment:
       API_BASE_URL: http://api:8080
+      SCHEWISE_ORIGIN: ${SCHEWISE_ORIGIN:-https://localhost:8443}
       NEXT_TELEMETRY_DISABLED: "1"
     ports:
       - "127.0.0.1:3000:3000"
@@ -44,6 +76,22 @@ services:
         condition: service_healthy
     init: true
 
+  gateway:
+    image: caddy:2-alpine
+    ports:
+      - "127.0.0.1:8443:8443"
+    volumes:
+      - ./deploy/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      web:
+        condition: service_started
+    init: true
+
 volumes:
   go-modules:
   go-build:
+  postgres-data:
+  caddy-data:
+  caddy-config:

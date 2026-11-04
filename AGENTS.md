@@ -13,6 +13,9 @@
 ## Layout and boundaries
 
 - `cmd/api`: process startup, configuration, and lifecycle only.
+- `cmd/migrate`: application database migration entry point.
+- `internal/auth` and `internal/database`: application identity and metadata;
+  keep user-connected target databases separate.
 - `internal/`: private Go implementation. Keep HTTP transport separate from
   domain logic when domain behavior is introduced.
 - `apps/web`: Next.js App Router with strict TypeScript. Prefer Server
@@ -22,15 +25,19 @@
   not duplicate domain logic in Next.js route handlers.
 - Use Go's standard library where it is sufficient. Add dependencies to solve a
   concrete problem and explain the choice.
+- Use Fiber v3 for HTTP and Zap for structured logs. Never log request bodies,
+  credentials, cookies, CSRF/session tokens, or raw database error details.
 
 ## Development
 
 - Use the Go toolchain in `go.mod`, Node.js 26, and the exact pnpm version in
   the root `package.json`. Commit `pnpm-lock.yaml` when dependencies change.
 - Use `gofmt` for Go and Prettier for supported web/config/documentation files.
-- Run `make check` for source changes. Run `make build` and `make smoke` when
-  startup, configuration, API integration, or build behavior changes. The smoke
-  check requires free ports 8080/3000 and a web build using the default API URL.
+- Run `make check` for source changes and `make integration-test` for auth or
+  SQL changes using isolated test schemas. Run `make build` and `make smoke`
+  when startup, configuration, API integration, or build behavior changes. The
+  smoke check requires free ports 8080/3000 and a web build using the default
+  API URL.
 - Prefer tests of public behavior and failure cases. Do not add tests that only
   restate framework behavior or formatting rules.
 - For dependency changes, run `pnpm audit --audit-level high`. For container
@@ -51,13 +58,17 @@
 - AI proposals must be reviewed before executing SQL or mutating a database. Do
   not send database contents to external providers implicitly.
 - Do not add real database connections, authentication, persistence, or AI
-  integrations as incidental changes to the foundation.
+  integrations as incidental changes outside the requested capability.
+  Application PostgreSQL/authentication are implemented; target connectors and
+  AI are deferred.
 
 ## Contribution hygiene
 
 - Preserve the Apache-2.0 license.
 - Update documentation and `.env.example` when configuration changes. The Go API
   reads process environment variables; it does not load dotenv files.
+- Local Make wrappers parse ignored `.env` without shell evaluation. Never
+  commit it or reset the persistent application database during routine tests.
 - Follow `CONTRIBUTING.md` and the pull request template.
 - Use task-based branches such as `chore/bootstrap-project`, without contributor
   or agent prefixes, and use Conventional Commit messages.
