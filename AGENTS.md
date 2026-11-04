@@ -30,6 +30,11 @@
 
 ## Development
 
+- Follow `docs/frontend-design.md` for frontend work: build compact operational
+  interfaces, use Lucide icons, keep letter spacing at zero, and verify keyboard
+  interaction and responsive layouts. Preserve routes and authentication
+  behavior.
+
 - Use the Go toolchain in `go.mod`, Node.js 26, and the exact pnpm version in
   the root `package.json`. Commit `pnpm-lock.yaml` when dependencies change.
 - Keep the native TypeScript compiler and TypeScript 6 API compatibility aliases
