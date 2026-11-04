@@ -30,9 +30,41 @@ Run from the repository root:
 | `make docker-down`      | Stop/remove containers; preserve data/CA/cache volumes        |
 | `make local-ca`         | Export the HTTPS gateway's public CA certificate              |
 
-`pnpm lint`, `pnpm typecheck`, and `pnpm build` operate on the web package.
-`pnpm format` covers supported repository files; gofmt covers Go. Next.js type
-generation runs before TypeScript checking.
+`pnpm lint`, `pnpm typecheck`, `pnpm test:toolchain`, and `pnpm build` operate
+on the web package. `pnpm format` covers supported repository files; gofmt
+covers Go. Next.js type generation runs before TypeScript checking.
+
+## TypeScript 7 and ESLint 10 compatibility
+
+The application uses the latest stable TypeScript 7 compiler and ESLint 10.
+TypeScript 7 does not expose the JavaScript compiler API needed by
+typescript-eslint, so the workspace uses Microsoft's side-by-side arrangement:
+
+- `@typescript/native` aliases `typescript@7.0.2` and supplies the native `tsc`.
+- `typescript` aliases `@typescript/typescript6@6.0.2` and supplies the
+  TypeScript 6 API for tools that import `typescript`, plus a separate `tsc6`
+  command.
+
+`pnpm typecheck` and Next.js production builds use the project-local native
+`tsc`. The linter uses the compatibility API. Keep both aliases when upgrading;
+replacing the API alias with TypeScript 7 directly makes typescript-eslint fail
+at import. See
+[Microsoft's migration guidance](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-6.0)
+and
+[Next.js TypeScript 7 support](https://nextjs.org/docs/app/api-reference/config/typescript#using-typescript-7).
+
+The latest published `eslint-plugin-import@2.32.0`,
+`eslint-plugin-react@7.37.5`, and `eslint-plugin-jsx-a11y@6.10.2` still declare
+peer ranges ending at ESLint 9. Their ranges are not overridden or suppressed.
+ESLint 10 passes this project's lint and plugin-execution probes, but this is
+project-level verification, not a claim of complete upstream ESLint 10 support.
+Installation can report those peer warnings until upstream updates the metadata.
+
+`pnpm test:toolchain` exercises both invalid and valid TypeScript/JSX through
+the real configuration, checking that TypeScript, React, accessibility, import,
+and Next.js rules actually report errors instead of silently dropping
+validation. It runs in `make check` and CI alongside normal lint and native type
+checking.
 
 ## Configuration
 
@@ -133,8 +165,9 @@ code-owner enforcement still require GitHub settings.
 
 The initial npm audit reports one moderate transitive lint dependency advisory,
 [GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249). CI
-blocks high/critical findings. ESLint 9 matches the current Next.js plugins'
-peer ranges; do not force incompatible major overrides to suppress advisories.
+blocks high/critical findings. Compatibility notes for the current lint/compiler
+versions are documented above; do not override dependency metadata or disable
+rules to hide compatibility failures.
 
 ## Troubleshooting
 

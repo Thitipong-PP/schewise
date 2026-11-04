@@ -79,7 +79,7 @@ native HTTPS setup and commands.
 ## Checks
 
 ```sh
-make check             # Format, vet, Go race tests, ESLint, TypeScript
+make check             # Format, vet, Go tests, lint/plugin checks, TypeScript
 make integration-test  # Auth/SQL tests in isolated Postgres schemas
 make build             # API and migration binaries, production Next.js build
 make smoke             # Production page/proxy/auth integration; ports 8080/3000 free

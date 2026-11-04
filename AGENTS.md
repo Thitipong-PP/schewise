@@ -32,6 +32,9 @@
 
 - Use the Go toolchain in `go.mod`, Node.js 26, and the exact pnpm version in
   the root `package.json`. Commit `pnpm-lock.yaml` when dependencies change.
+- Keep the native TypeScript compiler and TypeScript 6 API compatibility aliases
+  distinct while tooling needs the older API. Run `pnpm test:toolchain` for web
+  dependency upgrades and preserve the existing lint/type-check coverage.
 - Use `gofmt` for Go and Prettier for supported web/config/documentation files.
 - Run `make check` for source changes and `make integration-test` for auth or
   SQL changes using isolated test schemas. Run `make build` and `make smoke`
