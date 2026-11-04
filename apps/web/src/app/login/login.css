@@ -218,24 +218,27 @@
 .login-field input {
   min-width: 0;
   width: 100%;
-  min-height: 50px;
-  padding: 12px 14px;
-  border: var(--dp-border-hairline) solid var(--dp-color-rule);
-  border-radius: 6px;
-  background: var(--dp-color-ground);
+  min-height: 46px;
+  padding: 10px 13px;
+  border: var(--dp-border-hairline) solid transparent;
+  border-radius: 8px;
+  background: var(--dp-color-ground-muted);
   color: var(--dp-color-ink);
   font: inherit;
   transition:
     border-color var(--dp-motion-interaction) var(--dp-motion-easing),
-    box-shadow var(--dp-motion-interaction) var(--dp-motion-easing);
+    background var(--dp-motion-interaction) var(--dp-motion-easing);
 }
 
 .login-field input:hover:not(:disabled) {
-  border-color: #a5abb6;
+  border-color: #c4c9d2;
 }
 
-.login-field input:focus-visible {
+.login-shell .login-field input:focus {
   border-color: var(--dp-color-accent);
+  background: var(--dp-color-panel);
+  outline: 1px solid var(--dp-color-accent);
+  outline-offset: 0;
 }
 
 .login-form button {
