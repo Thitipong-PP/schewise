@@ -1,0 +1,11 @@
+FROM golang:1.27.3-bookworm
+
+WORKDIR /workspace
+COPY go.mod ./
+RUN go mod download
+COPY . .
+
+EXPOSE 8080
+# Bind-mounted Git metadata may be owned by a different host user.
+# Development binaries do not need embedded VCS metadata.
+CMD ["sh", "-c", "go build -buildvcs=false -o /tmp/schewise-api ./cmd/api && exec /tmp/schewise-api"]

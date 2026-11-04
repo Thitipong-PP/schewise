@@ -1,0 +1,16 @@
+.git
+node_modules
+**/node_modules
+**/.next
+**/next-env.d.ts
+**/*.tsbuildinfo
+bin
+.env*
+**/.env*
+!**/.env.example
+data
+backups
+*.dump
+*.sqlite*
+*.pem
+*.key

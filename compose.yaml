@@ -1,0 +1,49 @@
+name: schewise
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: cmd/api/Dockerfile.dev
+    environment:
+      SCHEWISE_HTTP_ADDR: "0.0.0.0:8080"
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - .:/workspace
+      - go-modules:/go/pkg/mod
+      - go-build:/root/.cache/go-build
+    init: true
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "--fail",
+          "--silent",
+          "http://127.0.0.1:8080/api/v1/health",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.dev
+    environment:
+      API_BASE_URL: http://api:8080
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "127.0.0.1:3000:3000"
+    volumes:
+      - ./apps/web/src:/workspace/apps/web/src
+    depends_on:
+      api:
+        condition: service_healthy
+    init: true
+
+volumes:
+  go-modules:
+  go-build:

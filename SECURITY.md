@@ -1,0 +1,35 @@
+# Security policy
+
+## Project status
+
+Schewise is pre-release software for local development. It has no authentication
+or authorization and is not ready to be exposed to the public internet. Only the
+current default branch receives security fixes; there are no supported release
+lines yet.
+
+The starter binds services to loopback. The development Compose setup listens on
+container interfaces but publishes ports only on the host loopback interface.
+
+## Reporting a vulnerability
+
+Do not publish exploit details, credentials, or database contents in a public
+issue. Use
+[GitHub's private vulnerability reporting form](https://github.com/Thitipong-PP/schewise/security/advisories/new)
+when it is enabled. If the form is unavailable, open a minimal issue asking the
+maintainer to enable private reporting or provide a private contact channel. Do
+not include sensitive details until a private channel is available.
+
+Include affected versions or commits, impact, reproduction steps using synthetic
+data, and any suggested mitigation. There is no guaranteed response time at this
+stage.
+
+## Handling sensitive data
+
+- Keep credentials, private keys, database dumps, and personal data out of Git,
+  issues, logs, screenshots, and AI prompts.
+- Use synthetic data for development and tests. Ignored file patterns are a
+  convenience, not a substitute for reviewing staged changes.
+- If a secret is exposed, revoke or rotate it immediately. Removing the file in
+  a later commit does not remove the secret from history.
+- Future connectors must use scoped access. Future AI features must make data
+  sharing explicit and must not execute generated SQL without review.

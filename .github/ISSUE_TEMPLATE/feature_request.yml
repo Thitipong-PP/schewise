@@ -1,0 +1,39 @@
+name: Feature proposal
+description: Propose a capability or architectural change.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value:
+        Please write in English and check docs/roadmap.md for existing plans.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and use case
+      description: Who needs this and what are they trying to do?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Describe the user-visible outcome and a concrete example.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: textarea
+    id: implications
+    attributes:
+      label: Data and compatibility implications
+      description:
+        Consider environments, credentials, destructive operations, database
+        engines, and AI data sharing where relevant.
+  - type: textarea
+    id: scope
+    attributes:
+      label: Suggested first milestone
+      description:
+        What is the smallest useful scope, and what should remain future work?
