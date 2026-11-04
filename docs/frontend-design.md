@@ -6,8 +6,11 @@ direction.
 
 ## Visual language
 
-- Use white and cool neutral surfaces with charcoal text. Reserve deep green for
-  primary actions, focus, and the product mark; red indicates errors.
+- Use a monochrome palette: white surfaces, neutral grays, and charcoal text and
+  actions. Keep focus and errors distinguishable with borders, icons, and text.
+  A brand color theme has not been selected yet.
+- Use the text "Schewise" for the product identity, without a logo icon. The
+  final logo will be designed separately.
 - Use the bundled Host Grotesk for the product identity and Instrument Sans for
   controls and reading text. Set letter spacing to zero. Keep font sizes fixed
   at each component's intended scale, without viewport-based scaling.

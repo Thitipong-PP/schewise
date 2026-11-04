@@ -1,6 +1,6 @@
 import localFont from "next/font/local";
 import Link from "next/link";
-import { CodeXml, Database, LockKeyhole } from "lucide-react";
+import { CodeXml, LockKeyhole } from "lucide-react";
 import { LoginForm } from "@/components/login-form";
 import "./login.css";
 
@@ -28,7 +28,6 @@ export default function LoginPage() {
           prefetch={false}
           aria-label="Schewise home"
         >
-          <Database size={21} strokeWidth={1.7} aria-hidden="true" />
           <span>Schewise</span>
         </Link>
         <a
@@ -43,7 +42,6 @@ export default function LoginPage() {
       <main className="login-main">
         <div className="login-content">
           <div className="login-identity">
-            <Database size={32} strokeWidth={1.6} aria-hidden="true" />
             <span>Schewise</span>
           </div>
           <h1 className="login-heading" id="login-title">
