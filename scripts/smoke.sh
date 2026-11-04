@@ -49,8 +49,9 @@ for (const origin of ['http://127.0.0.1:8080', 'http://127.0.0.1:3000']) {
   const mutation = await fetch(`${origin}/api/v1/health`, { method: 'POST' });
   assert.equal(mutation.status, 405);
 }
-const page = await fetch('http://127.0.0.1:3000');
-assert.equal(page.status, 200);
-assert.match(await page.text(), /Check API connection/);
-console.log('Smoke checks passed: API contract, web page, and web-to-API proxy.');
+const page = await fetch('http://127.0.0.1:3000', { redirect: 'manual' });
+assert.equal(page.status, 307);
+console.log('Smoke checks passed: API contract, protected page redirect, and web-to-API proxy.');
 JS
+
+SCHEWISE_SMOKE_BASE_URL=http://127.0.0.1:3000 node scripts/auth-smoke.mjs

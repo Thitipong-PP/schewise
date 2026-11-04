@@ -21,6 +21,18 @@ jobs:
     name: Go
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      SCHEWISE_TEST_DATABASE_URL: postgres://postgres:synthetic-ci-database-password@127.0.0.1:5432/schewise?sslmode=disable
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: schewise
+          POSTGRES_PASSWORD: synthetic-ci-database-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d schewise" --health-interval 5s
+          --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -28,7 +40,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: false # No external Go modules yet.
+          cache: true
       - name: Check formatting
         run:
           test -z "$(gofmt -l cmd internal)" || (gofmt -l cmd internal; exit 1)
@@ -42,6 +54,24 @@ jobs:
     timeout-minutes: 15
     env:
       API_BASE_URL: http://127.0.0.1:8080
+      SCHEWISE_ORIGIN: https://localhost:8443
+      SCHEWISE_ADMIN_EMAIL: admin@example.test
+      SCHEWISE_ADMIN_PASSWORD: Synthetic-ci-administrator-password-42!
+      PGHOST: 127.0.0.1
+      PGPORT: "5432"
+      PGDATABASE: schewise
+      PGUSER: postgres
+      PGPASSWORD: synthetic-ci-database-password
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_DB: schewise
+          POSTGRES_PASSWORD: synthetic-ci-database-password
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres -d schewise" --health-interval 5s
+          --health-timeout 3s --health-retries 10
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -54,7 +84,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-          cache: false
+          cache: true
       - run: pnpm install --frozen-lockfile
       - run: pnpm format:check
       - run: pnpm lint
@@ -71,14 +101,16 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           persist-credentials: false
+      - run: make init
       - run: docker compose config --quiet
       - run: docker compose build
       - run: docker compose up -d --wait --wait-timeout 180
       - name: Check container API and web integration
         run: |
           curl --fail --silent --show-error --max-time 10 http://127.0.0.1:8080/api/v1/health
-          curl --fail --silent --show-error --max-time 10 --retry 10 --retry-all-errors --retry-delay 1 http://127.0.0.1:3000/api/v1/health
-          curl --fail --silent --show-error --max-time 10 --output /dev/null http://127.0.0.1:3000
+          make local-ca
+          curl --cacert .local/root.crt --fail --silent --show-error --max-time 10 --retry 10 --retry-all-errors --retry-delay 1 https://localhost:8443/api/v1/health
+          make auth-smoke
       - name: Check API graceful shutdown
         run: |
           docker compose stop api

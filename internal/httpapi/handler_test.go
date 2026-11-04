@@ -2,6 +2,7 @@ package httpapi_test
 
 import (
 	"encoding/json"
+	"mime"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,19 +11,22 @@ import (
 )
 
 func TestHealthContract(t *testing.T) {
-	recorder := httptest.NewRecorder()
-	httpapi.NewHandler().ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", recorder.Code)
+	response, err := httpapi.NewApp(httpapi.Config{}).Test(httptest.NewRequest(http.MethodGet, "/api/v1/health", nil))
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := recorder.Header().Get("Content-Type"); got != "application/json" {
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", response.StatusCode)
+	}
+	if got, _, err := mime.ParseMediaType(response.Header.Get("Content-Type")); err != nil || got != "application/json" {
 		t.Errorf("Content-Type = %q, want application/json", got)
 	}
 	var body struct {
 		Status  string `json:"status"`
 		Service string `json:"service"`
 	}
-	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatalf("invalid health JSON: %v", err)
 	}
 	if body.Status != "ok" || body.Service != "schewise-api" {
@@ -43,10 +47,13 @@ func TestRouteBoundaries(t *testing.T) {
 		{"no catch-all health", http.MethodGet, "/", http.StatusNotFound},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			recorder := httptest.NewRecorder()
-			httpapi.NewHandler().ServeHTTP(recorder, httptest.NewRequest(tc.method, tc.path, nil))
-			if recorder.Code != tc.status {
-				t.Errorf("status = %d, want %d", recorder.Code, tc.status)
+			response, err := httpapi.NewApp(httpapi.Config{}).Test(httptest.NewRequest(tc.method, tc.path, nil))
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer response.Body.Close()
+			if response.StatusCode != tc.status {
+				t.Errorf("status = %d, want %d", response.StatusCode, tc.status)
 			}
 		})
 	}

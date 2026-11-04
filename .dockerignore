@@ -10,6 +10,7 @@ bin
 !**/.env.example
 data
 backups
+.local
 *.dump
 *.sqlite*
 *.pem

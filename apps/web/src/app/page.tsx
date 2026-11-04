@@ -1,6 +1,9 @@
 import { BackendHealth } from "@/components/backend-health";
+import { LogoutButton } from "@/components/logout-button";
+import { requireUser } from "@/lib/auth";
 
-export default function Home() {
+export default async function Home() {
+  const user = await requireUser();
   return (
     <main>
       <p className="eyebrow">Schewise / Development preview</p>
@@ -10,6 +13,14 @@ export default function Home() {
         web app to the Go API. Database features are planned and are not
         available yet.
       </p>
+
+      <section className="connection" aria-labelledby="account-heading">
+        <h2 id="account-heading">Your account</h2>
+        <p>
+          {user.email} · {user.role}
+        </p>
+        <LogoutButton />
+      </section>
 
       <BackendHealth />
 
