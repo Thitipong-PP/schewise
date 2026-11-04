@@ -40,6 +40,7 @@ build: ## Build the API and production web app
 	pnpm build
 
 check: fmt-check lint test ## Run the same source checks as CI
+	pnpm test:toolchain
 	pnpm typecheck
 
 smoke: ## Check production integration using the app database (ports 8080/3000 free)

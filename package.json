@@ -11,6 +11,7 @@
     "build": "pnpm --filter @schewise/web build",
     "lint": "pnpm --filter @schewise/web lint",
     "typecheck": "pnpm --filter @schewise/web typecheck",
+    "test:toolchain": "pnpm --filter @schewise/web test:toolchain",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
