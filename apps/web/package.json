@@ -9,11 +9,13 @@
     "start": "next start --hostname 127.0.0.1",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "next typegen && tsc --noEmit",
-    "test:toolchain": "node --test scripts/toolchain.test.mjs"
+    "test:toolchain": "node --test scripts/toolchain.test.mjs",
+    "test:admin": "node --test scripts/admin.test.mjs"
   },
   "dependencies": {
     "lucide-react": "1.68.0",
     "next": "16.4.5",
+    "openapi-fetch": "0.17.0",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "server-only": "0.0.1"

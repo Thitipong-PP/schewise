@@ -75,7 +75,7 @@ assert.notEqual(cookie, anonymousCookie);
 assert.equal((await login.json()).user.role, "Administrator");
 const dashboard = await request("/");
 assert.equal(dashboard.status, 200);
-assert.match(await dashboard.text(), /Your account/);
+assert.match(await dashboard.text(), /Organization/);
 const authenticatedCSRF = await request("/api/v1/auth/csrf");
 assert.equal(authenticatedCSRF.status, 200);
 const nextCSRF = (await authenticatedCSRF.json()).csrf_token;

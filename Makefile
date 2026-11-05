@@ -1,4 +1,4 @@
-.PHONY: help init setup dev-api dev-web fmt fmt-check lint test integration-test build check smoke auth-smoke docker-up docker-down local-ca migrate migrate-status
+.PHONY: help init setup dev-api dev-web fmt fmt-check lint test integration-test build check smoke auth-smoke docker-up docker-down local-ca migrate migrate-status api-generate api-check
 
 help: ## Show available commands
 	@awk 'BEGIN {FS = ":.*## "} /^[a-zA-Z_-]+:.*## / {printf "%-16s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -39,11 +39,12 @@ build: ## Build the API and production web app
 	go build -trimpath -o bin/schewise-migrate ./cmd/migrate
 	pnpm build
 
-check: fmt-check lint test ## Run the same source checks as CI
+check: api-check fmt-check lint test ## Run the same source checks as CI
 	pnpm test:toolchain
+	pnpm test:admin
 	pnpm typecheck
 
-smoke: ## Check production integration using the app database (ports 8080/3000 free)
+smoke: ## Check production integration using the app database (default ports 8080/3000)
 	node scripts/with-env.mjs bash scripts/smoke.sh
 
 auth-smoke: ## Check the running HTTPS login flow using installation credentials
@@ -63,3 +64,12 @@ migrate: ## Apply application database migrations (also applied at API startup)
 
 migrate-status: ## Show the current application database migration version
 	node scripts/with-env.mjs go run ./cmd/migrate status
+
+api-generate: ## Generate OpenAPI and TypeScript contracts from backend DTOs/routes
+	go run ./cmd/apigen
+	node scripts/api-types.mjs
+	pnpm exec prettier --write docs/openapi.json
+
+api-check: ## Reject stale OpenAPI or generated frontend contracts
+	go run ./cmd/apigen --check
+	node scripts/api-types.mjs --check

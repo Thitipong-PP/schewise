@@ -1,11 +1,12 @@
 import "server-only";
+import type { components } from "./api-types";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 export const sessionCookie = "__Host-schewise_session";
 export const apiBaseURL = process.env.API_BASE_URL ?? "http://127.0.0.1:8080";
 
-export type User = { id: string; email: string; role: string };
+export type User = components["schemas"]["User"];
 
 export async function requireUser(): Promise<User> {
   const token = (await cookies()).get(sessionCookie)?.value;

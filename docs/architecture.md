@@ -46,14 +46,24 @@ be applied to a target connection.
   persisted assignments and resource ownership; no handler or auth service
   authorizes by a role name or browser claim. System-level permissions require
   root assignments. Metadata mutations and their audit records share a
-  transaction and a common advisory lock. Role-management HTTP/UI is deferred to
-  Step 2B; public registration remains disabled.
+  transaction and a common advisory lock. Step 2B exposes the permission-gated
+  unit/role/assignment API and monochrome administration UI. Read projections
+  redact inaccessible ancestors per assignment; Go alone determines capability
+  flags. Public registration remains disabled.
+- **API contracts:** `internal/apicontract` defines request/response DTOs and
+  the administration route manifest used by Fiber registration and the OpenAPI
+  3.1 generator. `openapi-typescript` generates frontend types; `openapi-fetch`
+  checks request paths, bodies, CSRF headers, and response types at compilation.
+  CI rejects stale generated files. These dependencies address contract drift
+  without adding another HTTP framework or duplicating domain logic in Next.js.
 
 See [ADR 0001](adr/0001-foundation.md) for the original foundation and
 [ADR 0002](adr/0002-authentication.md) for the HTTP, storage, and auth update.
-[ADR 0003](adr/0003-scoped-rbac.md) updates the authorization model.
-[Authentication](authentication.md) documents guarantees and deployment limits;
-[authorization](authorization.md) describes the Step 2A engine and repositories.
+[ADR 0003](adr/0003-scoped-rbac.md) updates the authorization model;
+[ADR 0004](adr/0004-administration-api.md) records the administration contract
+and inherited-source privacy boundary. [Authentication](authentication.md)
+documents guarantees and deployment limits; [authorization](authorization.md)
+describes the engine, repositories, and administration API.
 
 ## Database versioning direction
 
@@ -75,6 +85,6 @@ Transaction and DDL behavior must be evaluated per connector. Environment names
 such as staging are separate from a Git staging area.
 
 Target connectors, schema history, change execution, mock database endpoints,
-mapping/harmonization, AI assistance, and the HTTP/UI for collaborative
-permissions remain future work. Record material designs as ADRs and extend the
-[roadmap](roadmap.md) without treating planned features as implemented.
+mapping/harmonization, AI assistance, and invitations remain future work. Record
+material designs as ADRs and extend the [roadmap](roadmap.md) without treating
+planned features as implemented.

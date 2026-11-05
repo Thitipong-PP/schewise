@@ -1,22 +1,8 @@
-import localFont from "next/font/local";
+import { displayFont, bodyFont } from "@/app/brand-fonts";
 import Link from "next/link";
 import { CodeXml, LockKeyhole } from "lucide-react";
 import { LoginForm } from "@/components/login-form";
 import "./login.css";
-
-const displayFont = localFont({
-  src: "./fonts/host-grotesk.ttf",
-  variable: "--font-login-display",
-  weight: "300 800",
-  display: "swap",
-});
-
-const bodyFont = localFont({
-  src: "./fonts/instrument-sans.ttf",
-  variable: "--font-login-body",
-  weight: "400 700",
-  display: "swap",
-});
 
 export default function LoginPage() {
   return (

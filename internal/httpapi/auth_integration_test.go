@@ -94,7 +94,7 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil || !created {
 		t.Fatal("bootstrap failed", err)
 	}
-	return &fixture{db: db, app: httpapi.NewApp(httpapi.Config{Auth: service, Logger: logger, Origin: testOrigin}), service: service, logs: logs}
+	return &fixture{db: db, app: httpapi.NewApp(httpapi.Config{Auth: service, RBAC: rbac.NewRepository(db, logger, nil), Logger: logger, Origin: testOrigin}), service: service, logs: logs}
 }
 
 type result struct {

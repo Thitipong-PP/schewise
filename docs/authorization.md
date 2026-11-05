@@ -1,10 +1,11 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
-# Scoped authorization (Step 2A)
+# Scoped authorization
 
-This milestone implements application metadata and authorization in Go. It does
-not expose role, unit, assignment, or deactivation HTTP endpoints or management
-UI. Existing authentication endpoints are integrated with the engine.
+Steps 2A and 2B implement application metadata, authorization in Go, and
+permission-gated administration APIs and UI. Authentication uses the same
+engine. Invitations, account settings, deactivation endpoints, target
+connections, and database/AI features are not part of these steps.
 
 ## Units, roles, and assignments
 
@@ -132,8 +133,75 @@ upgraded schema; recovery requires a reviewed backup/forward migration plan.
 Normal API startup applies migrations. Tests use isolated schemas and do not
 upgrade the developer's application schema implicitly.
 
-## Deferred to Step 2B and later
+## Administration API and UI (Step 2B)
 
-Unit/role/assignment/deactivation HTTP APIs and UI are deferred. Groups,
+All administration routes require a live session. Mutations also require the
+existing exact HTTPS Origin and synchronizer CSRF token. Every endpoint uses
+`Can` or `CanAssign`, directly or through authorized read projections; the UI
+never authorizes by role name. Unit operations first check `unit:read`, so
+unreadable and nonexistent units return the same 403 error envelope. Responses
+use `{ "error": "Readable reason", "code": "stable_code" }` for failures.
+
+| Area               | Routes beneath `/api/v1`                                                | Authorization                                                                                           |
+| ------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Capabilities       | `GET /access/context`                                                   | Effective permissions from `Can`                                                                        |
+| Units              | `GET /units`, `/units/tree`, `/units/{id}`                              | `unit:read`, filtered forest                                                                            |
+| Unit edits         | `POST /units`, `PATCH/DELETE /units/{id}`                               | Read plus `unit:manage`; root/delete constraints                                                        |
+| Moves              | `POST /units/{id}/move`                                                 | Read source/destination; manage source, current parent, destination                                     |
+| Impact             | `POST /units/{id}/dry-run/move`, `/dry-run/delete`                      | Same authorization as corresponding mutation                                                            |
+| Roles              | `GET/POST /roles`, `PATCH/DELETE /roles/{id}`, `POST /roles/{id}/clone` | Root `role:manage`; writes must hold all proposed permissions                                           |
+| Catalog            | `GET /permissions`                                                      | Readable units or root `role:manage`                                                                    |
+| Delegation choices | `GET /units/{id}/assignable-roles`                                      | Unit read/manage-members; filtered by `CanAssign`                                                       |
+| Membership         | `GET /units/{id}/members`, `/assignments`, `/access`                    | `unit:read`; assignments are direct only; access excludes inactive/no-access users                      |
+| User directory     | `GET /users?unit_id=&q=`                                                | Root `user:manage` or read/manage-members at supplied unit; active IDs/emails only, at most 200 matches |
+| User access        | `GET /users/{id}/assignments`, `/access`                                | Self, root `user:manage`, or manageable readable units; filtered to inspectable units                   |
+| Assignment edits   | `POST /assignments`, `DELETE /assignments/{id}`                         | Readable origin plus `CanAssign`; optional note on create                                               |
+| Explain            | `POST /access/explain`                                                  | Read target unit plus self, root `user:manage`, or unit manage-members                                  |
+| Audit              | `GET /audit`                                                            | Root `audit:read`; actor/action/from/to filters and stable keyset pagination                            |
+
+Connection resources are deliberately unavailable through these new endpoints
+until a real ownership adapter is implemented. The OpenAPI document specifies
+request/response schemas and query parameters. PATCH requests replace the
+editable metadata fields; the UI submits the complete form. Delete never
+cascades into child units, assignments, or connections.
+
+Organization is the protected `/` page. `/roles` manages custom roles with a
+permission catalog grouped by area and distinct-user/assignment counts.
+`/units/{id}` lists direct and inherited members, scoped role assignment with an
+optional note, and revocation. `/explain` shows the decision, granting
+assignments, and accessible units for an inspectable user. `/audit` supports
+filters and pagination. Menus and controls use API-evaluated permissions and
+capability flags; direct HTTP requests are independently enforced.
+
+### Inherited-source privacy
+
+Read projections evaluate origin visibility **per assignment**. A caller who can
+read Payments but cannot read Engineering sees Bob's Engineering grant as
+`source: "inherited_hidden"`, with the role and granted permissions. The origin
+unit name/ID, scope, assignment ID, note, and timestamp are omitted. The UI says
+"Inherited from a higher-level unit you don't have access to" and provides no
+revoke action. An Administrator with origin read access sees the full source.
+Explain uses the same projection. A readable origin outside the caller's
+delegation authority includes a read-only explanation. Visible forests also omit
+inaccessible parent IDs. Audit contents require the independent global
+`audit:read` permission and are not a scoped membership projection.
+
+### Generated contracts and verification
+
+`make api-generate` derives `docs/openapi.json` from real Go DTOs/routes, then
+regenerates `apps/web/src/lib/api-types.ts`. `make api-check` rejects stale
+outputs; it runs in `make check` and CI. Handlers validate operation DTO types
+against the manifest and strictly reject unknown JSON fields. No API types are
+copied by hand into the administration client.
+
+HTTP integration tests use isolated PostgreSQL schemas for 401/403, hidden vs
+missing resources, per-assignment redaction, Explain, escalation, immutable
+roles, role deletion while assigned, last-admin protection, unit dry-run/move/
+delete, and audit filtering. Frontend Node tests cover source presentation,
+forest ordering, move choices, and client failure/CSRF request behavior.
+
+## Deferred capabilities
+
+Invitations, account settings, and deactivation APIs/UI remain deferred. Groups,
 permission expiry, deny rules, composite roles, inheritance flags, and
 schema/table/column-level permissions are deliberately absent.

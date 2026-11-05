@@ -6,10 +6,10 @@ Schewise aims to bring review, history, environment management, mock data,
 schema mapping, and harmonization to database projects.
 
 **Current milestone:** a runnable Go/Fiber API, Next.js web app,
-PostgreSQL-backed authentication, scoped RBAC foundations, local HTTPS, durable
-audit events, and contributor CI. Target database connections, schema
-versioning/rollback, mock database endpoints, harmonization, role-management
-APIs/UI, AI, and CD are not implemented yet. See the [roadmap](docs/roadmap.md).
+PostgreSQL-backed authentication, scoped authorization and administration
+APIs/UI, local HTTPS, durable audit events, and contributor CI. Target database
+connections, schema versioning/rollback, mock database endpoints, harmonization,
+AI, and CD are not implemented yet. See the [roadmap](docs/roadmap.md).
 
 ## Run locally
 
@@ -60,7 +60,7 @@ Web edits in `apps/web/src` hot reload. After Go edits, use
 `make docker-down` stops services and preserves database and certificate
 volumes.
 
-## Access model (Step 2A)
+## Access model
 
 Units form an organization tree with one permanent root and a maximum depth of
 six. Users receive roles through unit or connection assignments; an assignment
@@ -70,17 +70,42 @@ permission. Narrower assignments add access and cannot subtract inherited
 rights.
 
 Four immutable system roles are seeded: Administrator, Manager, Developer, and
-Viewer. Custom roles and cloning are available in the Go repository layer.
+Viewer. Custom roles and cloning are available through the Roles page and API.
 System-level permissions require root assignments. Delegation requires both
 membership-management permission and every permission being delegated; the last
 active root Administrator is protected. Every successful metadata mutation and
 its audit entry commit together.
 
-This step supplies the data model, `Can`/`Explain`/`CanAssign`, repository
-operations, and unit-impact previews. Role/unit/assignment APIs and UI are
-reserved for Step 2B. Connection scopes have a fail-closed ownership adapter,
-not a real connection catalog or connector yet. See the
-[authorization guide](docs/authorization.md).
+After signing in, Organization shows readable units. Open a unit to inspect its
+members and assign or revoke roles. Moving/deleting a unit requires a dry-run
+impact review in the confirmation dialog. Access explorer explains a user's
+permission at a unit; Audit log supports actor/action/time filters. Controls
+follow server-evaluated permissions and the Go API rechecks every operation.
+Unreadable inherited origins are hidden individually, and assignments outside
+your delegation authority are read-only.
+
+To bootstrap the first administrator, set `SCHEWISE_ADMIN_EMAIL` and
+`SCHEWISE_ADMIN_PASSWORD` before the first API startup (`make init` generates
+local values). This creates the initial root Administrator only; changing these
+variables never resets an existing account.
+
+To add a custom role:
+
+1. Sign in with root `role:manage` and the permissions you intend to grant.
+2. Open **Roles → Create role**, name it, and tick the grouped permissions.
+   Alternatively, clone a system/custom role, then edit the copy.
+3. Open the target unit and choose **Assign role** for an existing user, with an
+   optional note. You need `unit:manage_members` and every delegated permission
+   at that scope. Roles containing system permissions can only be assigned at
+   root.
+
+System roles are read-only. A custom role cannot be deleted while assigned.
+Public registration and invitations remain unavailable in the UI.
+
+The API contract is generated from backend DTOs/routes in
+[OpenAPI](docs/openapi.json), with generated TypeScript types checked in CI.
+Connection scopes have a fail-closed ownership adapter, not a real connection
+catalog or connector yet. See the [authorization guide](docs/authorization.md).
 
 ## Develop without API/web containers
 
@@ -102,7 +127,7 @@ native HTTPS setup and commands.
 ## Checks
 
 ```sh
-make check             # Format, vet, Go tests, lint/plugin checks, TypeScript
+make check             # API contract, format, vet, Go/web tests, lint, TypeScript
 make integration-test  # Auth/SQL tests in isolated Postgres schemas
 make build             # API and migration binaries, production Next.js build
 make smoke             # Production page/proxy/auth integration; ports 8080/3000 free
@@ -129,6 +154,8 @@ internal/rbac/           Scoped permission engine, metadata repositories, impact
 internal/config/         Process environment configuration
 internal/database/       PostgreSQL access and embedded Goose migrations
 internal/httpapi/        Fiber routes and HTTP/integration tests
+internal/apicontract/    Backend DTOs and route manifest for OpenAPI generation
+cmd/apigen/              OpenAPI generator
 apps/web/                Next.js App Router and authentication UI/proxy
 deploy/                  Local Caddy and Postgres initialization configuration
 scripts/                 Local setup and smoke checks

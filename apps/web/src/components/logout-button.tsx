@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { authMutation } from "@/lib/auth-client";
 
@@ -22,7 +23,13 @@ export function LogoutButton() {
   }
   return (
     <div>
-      <button type="button" disabled={pending} onClick={logout}>
+      <button
+        className="secondary"
+        type="button"
+        disabled={pending}
+        onClick={logout}
+      >
+        <LogOut size={15} aria-hidden="true" />
         {pending ? "Signing out..." : "Sign out"}
       </button>
       {error && (

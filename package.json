@@ -13,9 +13,11 @@
     "typecheck": "pnpm --filter @schewise/web typecheck",
     "test:toolchain": "pnpm --filter @schewise/web test:toolchain",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "test:admin": "pnpm --filter @schewise/web test:admin"
   },
   "devDependencies": {
+    "openapi-typescript": "7.13.0",
     "prettier": "3.9.10"
   }
 }
