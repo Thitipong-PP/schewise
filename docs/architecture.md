@@ -14,9 +14,10 @@ flowchart LR
     API --> Zap[Redacted JSON stdout logs]
 ```
 
-The application database contains roles, users, sessions, audit events, and
-migration state. It is separate from any future target database that a user
-connects. Application migrations must never be applied to a target connection.
+The application database contains units, roles, flat permissions, assignments,
+users, sessions, audit records, and migration state. It is separate from any
+future target database that a user connects. Application migrations must never
+be applied to a target connection.
 
 ## Boundaries and choices
 
@@ -39,12 +40,34 @@ connects. Application migrations must never be applied to a target connection.
 - **HTTPS:** the development Caddy gateway issues local certificates. Client CA
   trust is explicit. Cookies remain Secure/HttpOnly/SameSite=Lax, with opaque
   sessions stored as digests and synchronizer CSRF protection.
-- **Roles:** Administrator is the only seeded role and can create accounts and
-  revoke sessions. Public registration and custom role editing are absent.
+- **Authorization:** `internal/rbac` owns the permission catalog, scoped
+  additive engine, hierarchy, role/assignment repositories, and impact previews.
+  One permanent root and four immutable system roles are seeded. `Can` resolves
+  persisted assignments and resource ownership; no handler or auth service
+  authorizes by a role name or browser claim. System-level permissions require
+  root assignments. Metadata mutations and their audit records share a
+  transaction and a common advisory lock. Step 2B exposes the permission-gated
+  unit/role/assignment API and monochrome administration UI. Read projections
+  redact inaccessible ancestors per assignment; Go alone determines capability
+  flags. Inheritance boundaries stop ancestor grants while retaining built-in
+  root Administrator bypasses. `CanRevoke` centralizes revoke authority. Public
+  registration remains disabled.
+- **API contracts:** `internal/apicontract` defines request/response DTOs and
+  the administration route manifest used by Fiber registration and the OpenAPI
+  3.1 generator. `openapi-typescript` generates frontend types; `openapi-fetch`
+  checks request paths, bodies, CSRF headers, and response types at compilation.
+  CI rejects stale generated files. These dependencies address contract drift
+  without adding another HTTP framework or duplicating domain logic in Next.js.
 
 See [ADR 0001](adr/0001-foundation.md) for the original foundation and
 [ADR 0002](adr/0002-authentication.md) for the HTTP, storage, and auth update.
-[Authentication](authentication.md) documents guarantees and deployment limits.
+[ADR 0003](adr/0003-scoped-rbac.md) updates the authorization model;
+[ADR 0004](adr/0004-administration-api.md) records the administration contract
+and inherited-source privacy boundary.
+[ADR 0005](adr/0005-inheritance-boundaries.md) adds inheritance boundaries and
+centralized revocation. [Authentication](authentication.md) documents guarantees
+and deployment limits; [authorization](authorization.md) describes the engine,
+repositories, and administration API.
 
 ## Database versioning direction
 
@@ -66,6 +89,6 @@ Transaction and DDL behavior must be evaluated per connector. Environment names
 such as staging are separate from a Git staging area.
 
 Target connectors, schema history, change execution, mock database endpoints,
-mapping/harmonization, AI assistance, and collaborative project permissions
-remain future work. Record material designs as ADRs and extend the
-[roadmap](roadmap.md) without treating planned features as implemented.
+mapping/harmonization, AI assistance, and invitations remain future work. Record
+material designs as ADRs and extend the [roadmap](roadmap.md) without treating
+planned features as implemented.

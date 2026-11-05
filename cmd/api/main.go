@@ -12,6 +12,7 @@ import (
 	"github.com/Thitipong-PP/schewise/internal/config"
 	"github.com/Thitipong-PP/schewise/internal/database"
 	"github.com/Thitipong-PP/schewise/internal/httpapi"
+	"github.com/Thitipong-PP/schewise/internal/rbac"
 	"github.com/gofiber/fiber/v3"
 	"go.uber.org/zap"
 )
@@ -55,7 +56,7 @@ func run(ctx context.Context, logger *zap.Logger) error {
 	if _, err := service.Bootstrap(startup, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		return errors.New("administrator bootstrap failed; verify installation credentials and database availability")
 	}
-	app := httpapi.NewApp(httpapi.Config{Auth: service, Logger: logger, Origin: cfg.Origin})
+	app := httpapi.NewApp(httpapi.Config{Auth: service, RBAC: rbac.NewRepository(db, logger, nil), Logger: logger, Origin: cfg.Origin})
 	cleanupCtx, cleanupCancel := context.WithCancel(ctx)
 	defer cleanupCancel()
 	go func() {

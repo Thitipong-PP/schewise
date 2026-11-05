@@ -63,10 +63,10 @@ Paths below are relative to `/api/v1`. Responses are JSON.
 | GET / HEAD | `/health`                | Public process liveness, not database readiness                         |
 | GET        | `/auth/csrf`             | Returns CSRF token; creates a short-lived anonymous session when needed |
 | POST       | `/auth/login`            | Valid CSRF, exact Origin, email/password; rotates the session           |
-| POST       | `/auth/register`         | Administrator plus CSRF; creates an Administrator account               |
+| POST       | `/auth/register`         | Root user:manage and authority to delegate Administrator, plus CSRF     |
 | POST       | `/auth/logout`           | Valid session plus CSRF; revokes session and expires cookie             |
 | GET        | `/auth/me`               | Authenticated identity: UUID, email, and current role                   |
-| DELETE     | `/users/{uuid}/sessions` | Administrator plus CSRF; revokes all sessions for that user             |
+| DELETE     | `/users/{uuid}/sessions` | Root user:manage plus CSRF; revokes all sessions for that user          |
 
 Login and registration accept only `email` and `password`; unknown fields are
 rejected. Emails are trimmed/lowercased. Passwords require at least 12 Unicode
@@ -74,10 +74,23 @@ characters and at most 256 UTF-8 bytes. Argon2id PHC hashes use 64 MiB memory, 3
 iterations, 2 lanes, a random 16-byte salt, and a 32-byte output. Unknown emails
 perform dummy password verification, and failed login responses are generic.
 
-The only seeded role is **Administrator**, granting all current capabilities.
-Public registration is disabled; only an existing Administrator can create
-accounts, and all accounts in this milestone are Administrators. Custom
-roles/permissions, invitations, MFA, verification, and recovery are deferred.
+The four seeded system roles are **Administrator**, **Manager**, **Developer**,
+and **Viewer**. Role names are display metadata, never authorization checks.
+Permissions come from scoped assignments through the RBAC engine; see
+[authorization](authorization.md).
+
+Public registration is disabled. The existing account-creation endpoint still
+creates a root Administrator, so its caller needs root `user:manage` **and**
+`CanAssign(Administrator, root)`. Holding `user:manage` alone cannot elevate a
+new account. Per-user session revocation needs root `user:manage`.
+Role/unit/assignment management APIs and UI are deferred to Step 2B;
+invitations, MFA, verification, and recovery remain deferred too.
+
+The existing identity response's `role` string is a display-only, sorted list of
+assigned role names for compatibility with the development page. It does not
+represent effective permissions at a particular resource. Deactivated users
+cannot authenticate, and deactivation removes their sessions in the same
+transaction. A concurrent login cannot recreate a session after deactivation.
 
 Revocation affects subsequent requests immediately. It does not disable the
 account or prevent another login with valid credentials. Already in-flight
@@ -116,11 +129,13 @@ CSRF tokens, session tokens, and raw database error details are never serialized
 into logs. System lifecycle, migrations, cleanup, and operation failures use Zap
 too.
 
-`audit_events` persists bootstrap, successful/failed login, account creation,
-logout, access/permission denial, CSRF rejection, rate-limit denial, and session
-revocation. Successful auth/account mutations commit with their audit event in
-one transaction. Audit failure rolls back the associated mutation. The request
-failure remains visible in operational logs.
+`audit_log` persists bootstrap, successful/failed login, account creation,
+logout, access/permission denial, CSRF rejection, rate-limit denial, session
+revocation, and RBAC metadata mutations. Authentication request IDs, outcomes,
+and peer IPs live in `details`. Existing `audit_events` rows are migrated with
+IDs and timestamps preserved. Successful mutations commit with their audit
+record in one transaction. Audit failure rolls back the associated mutation;
+operational failures remain visible in redacted Zap logs.
 
 Audit events have no automatic deletion policy yet. This is application-level
 audit storage, not tamper-proof storage against a database owner or host admin.

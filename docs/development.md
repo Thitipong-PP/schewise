@@ -20,7 +20,9 @@ Run from the repository root:
 | `make lint`             | Go vet and ESLint                                             |
 | `make test`             | Go race tests; DB tests skip unless explicitly enabled        |
 | `make integration-test` | Run auth/SQL tests in isolated Postgres schemas               |
-| `make check`            | Formatting, lint, Go tests, and TypeScript                    |
+| `make api-generate`     | Regenerate OpenAPI and frontend API types                     |
+| `make api-check`        | Check generated contracts match backend routes/DTOs           |
+| `make check`            | Contracts, formatting, lint, Go/web tests, and TypeScript     |
 | `make build`            | Build API/migration binaries and production web app           |
 | `make smoke`            | Launch production builds and verify page/API/auth integration |
 | `make auth-smoke`       | Verify the running HTTPS stack with local CA validation       |
@@ -30,9 +32,21 @@ Run from the repository root:
 | `make docker-down`      | Stop/remove containers; preserve data/CA/cache volumes        |
 | `make local-ca`         | Export the HTTPS gateway's public CA certificate              |
 
-`pnpm lint`, `pnpm typecheck`, `pnpm test:toolchain`, and `pnpm build` operate
-on the web package. `pnpm format` covers supported repository files; gofmt
-covers Go. Next.js type generation runs before TypeScript checking.
+`pnpm lint`, `pnpm typecheck`, `pnpm test:toolchain`, `pnpm test:admin`, and
+`pnpm build` operate on the web package. `pnpm format` covers supported
+repository files; gofmt covers Go. Next.js type generation runs before
+TypeScript checking.
+
+## API contracts and frontend checks
+
+After changing administration DTOs or routes, run `make api-generate` and commit
+both generated files. `make api-check` compares OpenAPI semantically and the
+formatted TypeScript output exactly. The client uses `openapi-fetch` with those
+types, including required CSRF headers. These libraries solve contract drift; Go
+remains the only authorization/data owner. `pnpm test:admin` uses the existing
+Node test runner for access-source privacy, forest/move selectors, request
+headers, and error handling. Browser testing still covers rendered interaction,
+keyboard focus, and responsive layout.
 
 ## TypeScript 7 and ESLint 10 compatibility
 
@@ -123,12 +137,16 @@ docker compose up -d --wait db
 make integration-test
 ```
 
-Integration tests create a random `auth_test_*` schema, apply migrations there,
-and drop only that schema afterward. They do not clear application users,
-sessions, or audits. Alternatively supply an isolated PostgreSQL URL through
-`SCHEWISE_TEST_DATABASE_URL`; CI does this and runs the suite with the race
-detector. Tests cover rotation, CSRF, permissions, revocation, expiry, bootstrap
-idempotency, audit rollback, rate limits, cookie flags, and log redaction.
+Integration tests create random `auth_test_*` and `rbac_test_*` schemas, apply
+migrations there, and drop only that schema afterward. They do not clear
+application users, sessions, or audits. Alternatively supply an isolated
+PostgreSQL URL through `SCHEWISE_TEST_DATABASE_URL`; CI does this and runs the
+suite with the race detector. Tests cover rotation, CSRF, permissions,
+revocation, expiry, bootstrap idempotency, audit rollback, rate limits, cookie
+flags, and log redaction. RBAC coverage adds the Alice–Frank hierarchy fixture,
+permission union, scope isolation, delegation, immutable roles, legacy
+migration, concurrent last-admin protection, moves/deletes, and dry-run impact.
+Connection ownership uses a synthetic adapter; no target database is contacted.
 
 To test production builds locally, keep Postgres running and stop native API/web
 servers or `docker compose stop gateway web api` first:
@@ -140,7 +158,19 @@ make build
 make smoke
 ```
 
-Ports 8080/3000 must be free. Build with the default API destination. This smoke
+By default, ports 8080/3000 must be free and the build must use the default API
+destination. To preserve an existing running stack, choose free smoke ports and
+build with a matching destination:
+
+```sh
+API_BASE_URL=http://127.0.0.1:8082 make build
+API_BASE_URL=http://127.0.0.1:8082 SCHEWISE_SMOKE_API_PORT=8082 SCHEWISE_SMOKE_WEB_PORT=3002 make smoke
+```
+
+Supply a separate test database URL and synthetic matching bootstrap credentials
+when testing in isolation. Smoke uses the configured application database and
+normal startup migrations; port overrides do not isolate the database. Rebuild
+with the normal destination before switching back to default ports. This smoke
 script tests internal HTTP integration using explicit test cookie headers;
 actual browser auth uses HTTPS. Run the stack again, export its CA, and run
 `make auth-smoke` for certificate-validated HTTPS. Both smoke commands need
@@ -177,8 +207,8 @@ rules to hide compatibility failures.
   password. Changing bootstrap variables does not reset an existing account.
 - **Database failure:** inspect `docker compose logs db api`; confirm Postgres
   is healthy and password values still match the initialized volume.
-- **Port conflict:** stop the existing service. Smoke checks need 8080/3000
-  free.
+- **Port conflict:** stop the existing service. Smoke checks need their selected
+  API/web ports free.
 - **Go/network failure:** allow the official Go module proxy/checksum services
   or install the pinned toolchain manually.
 - **Lockfile mismatch:** use the pnpm version in `packageManager`, intentionally

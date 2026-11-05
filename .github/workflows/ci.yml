@@ -86,9 +86,11 @@ jobs:
           go-version-file: go.mod
           cache: true
       - run: pnpm install --frozen-lockfile
+      - run: make api-check
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm test:toolchain
+      - run: pnpm test:admin
       - run: pnpm typecheck
       - run: pnpm audit --audit-level high
       - run: make build

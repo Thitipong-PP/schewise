@@ -14,8 +14,8 @@
 
 - `cmd/api`: process startup, configuration, and lifecycle only.
 - `cmd/migrate`: application database migration entry point.
-- `internal/auth` and `internal/database`: application identity and metadata;
-  keep user-connected target databases separate.
+- `internal/auth`, `internal/rbac`, and `internal/database`: application
+  identity and metadata; keep user-connected target databases separate.
 - `internal/`: private Go implementation. Keep HTTP transport separate from
   domain logic when domain behavior is introduced.
 - `apps/web`: Next.js App Router with strict TypeScript. Prefer Server
@@ -25,6 +25,10 @@
   not duplicate domain logic in Next.js route handlers.
 - Use Go's standard library where it is sufficient. Add dependencies to solve a
   concrete problem and explain the choice.
+- Authorize through `internal/rbac`'s `Can`; never check role display names or
+  legacy admin flags. RBAC writes and account privilege changes must take the
+  shared advisory lock, recheck permissions in the transaction, and persist
+  their audit record atomically. Keep Step 2B APIs/UI separate from Step 2A.
 - Use Fiber v3 for HTTP and Zap for structured logs. Never log request bodies,
   credentials, cookies, CSRF/session tokens, or raw database error details.
 

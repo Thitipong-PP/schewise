@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"time"
 
+	api "github.com/Thitipong-PP/schewise/internal/apicontract"
 	"github.com/Thitipong-PP/schewise/internal/auth"
+	"github.com/Thitipong-PP/schewise/internal/rbac"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/recover"
@@ -23,6 +25,7 @@ const CookieName = "__Host-schewise_session"
 
 type Config struct {
 	Auth   *auth.Service
+	RBAC   *rbac.Repository
 	Logger *zap.Logger
 	Origin string
 }
@@ -43,7 +46,7 @@ func NewApp(config Config) *fiber.App {
 			if errors.As(err, &fe) {
 				code = fe.Code
 			}
-			return c.Status(code).JSON(fiber.Map{"error": http.StatusText(code)})
+			return errorReply(c, code, statusCode(code), http.StatusText(code))
 		},
 	})
 	app.Use(s.requestLog)
@@ -61,10 +64,11 @@ func NewApp(config Config) *fiber.App {
 	app.Use("/api/v1/auth", s.available)
 	app.Get("/api/v1/auth/csrf", s.rateLimit(60), s.csrf)
 	app.Post("/api/v1/auth/login", s.rateLimit(10), s.mutation, s.login)
-	app.Post("/api/v1/auth/register", s.rateLimit(20), s.mutation, s.authenticated, s.administrator, s.register)
+	app.Post("/api/v1/auth/register", s.rateLimit(20), s.mutation, s.authenticated, s.permission(rbac.UserManage), s.register)
 	app.Post("/api/v1/auth/logout", s.mutation, s.logout)
 	app.Get("/api/v1/auth/me", s.authenticated, s.me)
-	app.Delete("/api/v1/users/:id/sessions", s.available, s.mutation, s.authenticated, s.administrator, s.revokeSessions)
+	app.Delete("/api/v1/users/:id/sessions", s.available, s.mutation, s.authenticated, s.permission(rbac.UserManage), s.revokeSessions)
+	s.registerAdmin(app)
 	return app
 }
 
@@ -118,7 +122,7 @@ func (s *server) rateLimit(max int) fiber.Handler {
 		if err := s.Auth.Audit(c.Context(), event(c, "auth.rate_limited", "denied")); err != nil {
 			return s.failure(c, err)
 		}
-		return c.Status(429).JSON(fiber.Map{"error": "Too many requests. Try again later."})
+		return errorReply(c, 429, "rate_limited", "Too many requests. Try again later.")
 	}})
 }
 
@@ -145,7 +149,7 @@ func (s *server) csrf(c fiber.Ctx) error {
 	if err != nil {
 		return s.failure(c, err)
 	}
-	return c.JSON(fiber.Map{"csrf_token": session.CSRF})
+	return c.JSON(api.CSRFResponse{Token: session.CSRF})
 }
 
 func setCookie(c fiber.Ctx, session *auth.Session) {
@@ -187,19 +191,25 @@ func (s *server) authenticated(c fiber.Ctx) error {
 	return c.Next()
 }
 
-func (s *server) administrator(c fiber.Ctx) error {
-	session, _ := s.session(c)
-	if session.User.Role != "Administrator" {
-		return s.deny(c, "auth.authorization", "denied", 403)
+func (s *server) permission(permission rbac.Permission) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		session, _ := s.session(c)
+		allowed, err := s.Auth.Can(c.Context(), session.User, permission, rbac.RootScope())
+		if err != nil {
+			return s.failure(c, err)
+		}
+		if !allowed {
+			return s.deny(c, "auth.authorization", "denied", 403)
+		}
+		return c.Next()
 	}
-	return c.Next()
 }
 
 func (s *server) deny(c fiber.Ctx, action, outcome string, status int) error {
 	if err := s.Auth.Audit(c.Context(), event(c, action, outcome)); err != nil {
 		return s.failure(c, err)
 	}
-	return c.Status(status).JSON(fiber.Map{"error": http.StatusText(status)})
+	return errorReply(c, status, statusCode(status), http.StatusText(status))
 }
 
 func (s *server) failure(c fiber.Ctx, err error) error {
@@ -215,7 +225,7 @@ func (s *server) failure(c fiber.Ctx, err error) error {
 		message = "Authentication required."
 	case errors.Is(err, auth.ErrForbidden):
 		code = 403
-		message = "Administrator permission required."
+		message = "Required permission missing."
 	case errors.Is(err, auth.ErrInvalidInput):
 		code = 400
 		message = "Provide a valid email and a password of at least 12 characters and at most 256 bytes."
@@ -232,7 +242,7 @@ func (s *server) failure(c fiber.Ctx, err error) error {
 	if code == 503 {
 		s.Logger.Error("http.operation_failed", zap.String("request_id", c.Locals("request_id").(string)), zap.Int("status", code))
 	}
-	return c.Status(code).JSON(fiber.Map{"error": message})
+	return errorReply(c, code, statusCode(code), message)
 }
 
 type credentials struct {
@@ -272,7 +282,7 @@ func (s *server) login(c fiber.Ctx) error {
 	}
 	c.Locals("session", session)
 	setCookie(c, session)
-	return c.JSON(fiber.Map{"user": session.User})
+	return c.JSON(api.IdentityResponse{User: *session.User})
 }
 
 func (s *server) register(c fiber.Ctx) error {
@@ -288,7 +298,7 @@ func (s *server) register(c fiber.Ctx) error {
 		}
 		return s.failure(c, err)
 	}
-	return c.Status(201).JSON(fiber.Map{"user": user})
+	return c.Status(201).JSON(api.IdentityResponse{User: *user})
 }
 
 func (s *server) logout(c fiber.Ctx) error {
@@ -302,7 +312,7 @@ func (s *server) logout(c fiber.Ctx) error {
 
 func (s *server) me(c fiber.Ctx) error {
 	session, _ := s.session(c)
-	return c.JSON(fiber.Map{"user": session.User})
+	return c.JSON(api.IdentityResponse{User: *session.User})
 }
 
 func (s *server) revokeSessions(c fiber.Ctx) error {

@@ -1,8 +1,7 @@
 # Frontend design
 
 Schewise is a database workbench. Its interface should feel quiet, precise, and
-ready for repeated use. The login page is the first surface using this
-direction.
+ready for repeated use. The login and administration pages use this direction.
 
 ## Visual language
 
@@ -23,12 +22,18 @@ direction.
 
 ## Interaction
 
-- Use `lucide-react` for consistent icons instead of hand-drawn SVG controls. It
-  is the only added UI dependency; the project still uses ordinary React
-  components and CSS.
+- Use `lucide-react` for consistent icons instead of hand-drawn SVG controls.
+  The project uses ordinary React components and CSS; a typed API client handles
+  server contracts.
 - Give icon-only controls accessible names and descriptive hover titles. Keep
   visible keyboard focus, explicit labels, password-manager autocomplete, and
   native form validation. Password visibility is a reversible, labeled action.
+- Use one searchable member/user combobox with inline results. Debounce remote
+  searches, cancel outdated requests, preserve suggestions while updating, and
+  keep stale results unselectable. Searching must not clear role choices or
+  remount the form. Support arrow keys, Enter, Escape, and visible selection.
+- Native selects retain their behavior with an inset Lucide disclosure icon.
+  Inheritance switches require an impact dialog before committing a change.
 - Keep pending, disabled, and error states usable without shifting control
   dimensions. Respect reduced motion, including functional loading indicators.
 - Keep page and authentication behavior on their existing routes. Do not add

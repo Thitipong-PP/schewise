@@ -13,6 +13,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Thitipong-PP/schewise/internal/rbac"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/zap"
 )
@@ -20,7 +22,7 @@ import (
 var (
 	ErrUnauthorized = errors.New("authentication required")
 	ErrCredentials  = errors.New("invalid email or password")
-	ErrForbidden    = errors.New("administrator permission required")
+	ErrForbidden    = errors.New("required permission missing")
 	ErrInvalidInput = errors.New("invalid input")
 	ErrConflict     = errors.New("account already exists")
 	ErrNotFound     = errors.New("user not found")
@@ -99,9 +101,9 @@ func (s *Service) Lookup(ctx context.Context, token string) (*Session, error) {
 	}
 	var userID, email, role sql.NullString
 	result := &Session{Token: token}
-	err := s.db.QueryRowContext(ctx, `SELECT s.csrf_token,s.expires_at,u.id,u.email,r.name
-		FROM sessions s LEFT JOIN users u ON u.id=s.user_id LEFT JOIN roles r ON r.id=u.role_id
-		WHERE s.token_hash=$1 AND s.expires_at>now()`, tokenHash(token)).Scan(&result.CSRF, &result.ExpiresAt, &userID, &email, &role)
+	err := s.db.QueryRowContext(ctx, `SELECT s.csrf_token,s.expires_at,u.id,u.email,`+roleDisplay+`
+ FROM sessions s LEFT JOIN users u ON u.id=s.user_id
+ WHERE s.token_hash=$1 AND s.expires_at>now() AND (s.user_id IS NULL OR u.is_active)`, tokenHash(token)).Scan(&result.CSRF, &result.ExpiresAt, &userID, &email, &role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUnauthorized
 	}
@@ -132,14 +134,87 @@ func VerifyCSRF(session *Session, provided string) bool {
 	return session != nil && validToken(provided) && subtle.ConstantTimeCompare([]byte(session.CSRF), []byte(provided)) == 1
 }
 
-type executor interface {
-	ExecContext(context.Context, string, ...any) (sql.Result, error)
+// Role is retained as a display-only compatibility label, never an authority.
+const roleDisplay = `COALESCE((SELECT string_agg(DISTINCT r.name, ', ' ORDER BY r.name) FROM assignments a JOIN roles r ON r.id=a.role_id WHERE a.user_id=u.id),'')`
+
+type executor = rbac.Queryer
+
+func (s *Service) Can(ctx context.Context, user *User, permission rbac.Permission, resource rbac.Scope) (bool, error) {
+	if user == nil {
+		return false, nil
+	}
+	id, err := uuid.Parse(user.ID)
+	if err != nil {
+		return false, nil
+	}
+	return rbac.NewEngine(rbac.NewSQLReader(s.db, nil)).Can(ctx, id, permission, resource)
+}
+
+func authorizeManagement(ctx context.Context, db rbac.Queryer, actor *User, grantsAdministrator bool) error {
+	if actor == nil {
+		return ErrUnauthorized
+	}
+	id, err := uuid.Parse(actor.ID)
+	if err != nil {
+		return ErrUnauthorized
+	}
+	engine := rbac.NewEngine(rbac.NewSQLReader(db, nil))
+	allowed, err := engine.Can(ctx, id, rbac.UserManage, rbac.RootScope())
+	if err != nil {
+		return err
+	}
+	if !allowed {
+		return ErrForbidden
+	}
+	if grantsAdministrator {
+		allowed, err = engine.CanAssign(ctx, id, uuid.MustParse(rbac.AdministratorRoleID), rbac.RootScope())
+		if err != nil {
+			return err
+		}
+		if !allowed {
+			return ErrForbidden
+		}
+	}
+	return nil
+}
+
+func grantAdministrator(ctx context.Context, tx *sql.Tx, userID, actorID string) error {
+	user, err := uuid.Parse(userID)
+	if err != nil {
+		return err
+	}
+	actor, err := uuid.Parse(actorID)
+	if err != nil {
+		return err
+	}
+	var id uuid.UUID
+	err = tx.QueryRowContext(ctx, `INSERT INTO assignments(user_id,role_id,scope_type,scope_id,created_by) VALUES($1,$2,'unit',$3,$4) RETURNING id`, user, uuid.MustParse(rbac.AdministratorRoleID), rbac.RootScope().ID, actor).Scan(&id)
+	if err != nil {
+		return err
+	}
+	return rbac.WriteAudit(ctx, tx, rbac.Audit{ActorUserID: actor, Action: "assignment.create", TargetType: "assignment", TargetID: id, Details: map[string]any{"user_id": user, "role_id": rbac.AdministratorRoleID, "scope": rbac.RootScope()}})
 }
 
 func writeEvent(ctx context.Context, db executor, event Event) error {
-	_, err := db.ExecContext(ctx, `INSERT INTO audit_events(request_id,actor_id,target_id,action,outcome,remote_ip)
-		VALUES($1,NULLIF($2,'')::uuid,NULLIF($3,'')::uuid,$4,$5,$6)`, event.RequestID, event.ActorID, event.TargetID, event.Action, event.Outcome, event.RemoteIP)
-	return err
+	actor, target := uuid.Nil, uuid.Nil
+	var err error
+	if event.ActorID != "" {
+		actor, err = uuid.Parse(event.ActorID)
+		if err != nil {
+			return err
+		}
+	}
+	if event.TargetID != "" {
+		target, err = uuid.Parse(event.TargetID)
+		if err != nil {
+			return err
+		}
+	}
+	targetType := "authentication"
+	if target != uuid.Nil {
+		targetType = "user"
+	}
+	return rbac.WriteAudit(ctx, db, rbac.Audit{ActorUserID: actor, Action: event.Action, TargetType: targetType, TargetID: target, Details: map[string]any{"request_id": event.RequestID, "outcome": event.Outcome, "remote_ip": event.RemoteIP}})
 }
 
 func (s *Service) LogEvent(event Event) {
@@ -170,7 +245,7 @@ func (s *Service) Bootstrap(ctx context.Context, email, password string) (bool, 
 		return false, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if _, err := tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(736395102)`); err != nil {
+	if err := rbac.Lock(ctx, tx); err != nil {
 		return false, err
 	}
 	var exists bool
@@ -189,9 +264,11 @@ func (s *Service) Bootstrap(ctx context.Context, email, password string) (bool, 
 		return false, err
 	}
 	var userID string
-	err = tx.QueryRowContext(ctx, `INSERT INTO users(email,password_hash,role_id)
-		VALUES($1,$2,(SELECT id FROM roles WHERE name='Administrator')) RETURNING id`, email, hash).Scan(&userID)
+	err = tx.QueryRowContext(ctx, `INSERT INTO users(email,password_hash) VALUES($1,$2) RETURNING id`, email, hash).Scan(&userID)
 	if err != nil {
+		return false, err
+	}
+	if err := grantAdministrator(ctx, tx, userID, userID); err != nil {
 		return false, err
 	}
 	event := Event{RequestID: "installation", ActorID: userID, TargetID: userID, Action: "user.bootstrap", Outcome: "success"}
@@ -216,7 +293,7 @@ func (s *Service) Login(ctx context.Context, previous *Session, email, password 
 	email, normalizeErr := normalizeEmail(email)
 	var user User
 	var hash string
-	err := s.db.QueryRowContext(ctx, `SELECT u.id,u.email,r.name,u.password_hash FROM users u JOIN roles r ON r.id=u.role_id WHERE u.email=$1`, email).Scan(&user.ID, &user.Email, &user.Role, &hash)
+	err := s.db.QueryRowContext(ctx, `SELECT u.id,u.email,`+roleDisplay+`,u.password_hash FROM users u WHERE u.email=$1 AND u.is_active`, email).Scan(&user.ID, &user.Email, &user.Role, &hash)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -247,6 +324,24 @@ func (s *Service) Login(ctx context.Context, previous *Session, email, password 
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	// Serialize with deactivation so a concurrent login cannot recreate sessions
+	// after the user's sessions have been revoked.
+	var active bool
+	if err := tx.QueryRowContext(ctx, `SELECT is_active FROM users WHERE id=$1 FOR UPDATE`, user.ID).Scan(&active); err != nil {
+		return nil, err
+	}
+	if !active {
+		event.Action = "auth.login"
+		event.Outcome = "failure"
+		if err := writeEvent(ctx, tx, event); err != nil {
+			return nil, err
+		}
+		if err := tx.Commit(); err != nil {
+			return nil, err
+		}
+		s.LogEvent(event)
+		return nil, ErrCredentials
+	}
 	// Consume the pre-login session once. Concurrent login replays cannot reuse it.
 	res, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE token_hash=$1 AND expires_at>now()`, tokenHash(previous.Token))
 	if err != nil {
@@ -278,11 +373,8 @@ func (s *Service) Login(ctx context.Context, previous *Session, email, password 
 }
 
 func (s *Service) Register(ctx context.Context, actor *User, email, password string, event Event) (*User, error) {
-	if actor == nil {
-		return nil, ErrUnauthorized
-	}
-	if actor.Role != "Administrator" {
-		return nil, ErrForbidden
+	if err := authorizeManagement(ctx, s.db, actor, true); err != nil {
+		return nil, err
 	}
 	email, err := normalizeEmail(email)
 	if err != nil || !ValidPassword(password) {
@@ -301,8 +393,14 @@ func (s *Service) Register(ctx context.Context, actor *User, email, password str
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := rbac.Lock(ctx, tx); err != nil {
+		return nil, err
+	}
+	if err := authorizeManagement(ctx, tx, actor, true); err != nil {
+		return nil, err
+	}
 	user := &User{Email: email, Role: "Administrator"}
-	err = tx.QueryRowContext(ctx, `INSERT INTO users(email,password_hash,role_id) VALUES($1,$2,(SELECT id FROM roles WHERE name='Administrator')) RETURNING id`, email, hash).Scan(&user.ID)
+	err = tx.QueryRowContext(ctx, `INSERT INTO users(email,password_hash) VALUES($1,$2) RETURNING id`, email, hash).Scan(&user.ID)
 	var pgErr *pgconn.PgError
 	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
 		return nil, ErrConflict
@@ -312,6 +410,9 @@ func (s *Service) Register(ctx context.Context, actor *User, email, password str
 	}
 	event.ActorID = actor.ID
 	event.TargetID = user.ID
+	if err := grantAdministrator(ctx, tx, user.ID, actor.ID); err != nil {
+		return nil, err
+	}
 	event.Action = "user.register"
 	event.Outcome = "success"
 	if err := writeEvent(ctx, tx, event); err != nil {
@@ -352,14 +453,17 @@ func (s *Service) RevokeUserSessions(ctx context.Context, actor *User, userID st
 	if actor == nil {
 		return ErrUnauthorized
 	}
-	if actor.Role != "Administrator" {
-		return ErrForbidden
-	}
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
+	if err := rbac.Lock(ctx, tx); err != nil {
+		return err
+	}
+	if err := authorizeManagement(ctx, tx, actor, false); err != nil {
+		return err
+	}
 	var exists bool
 	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users WHERE id=$1::uuid)`, userID).Scan(&exists); err != nil {
 		return err

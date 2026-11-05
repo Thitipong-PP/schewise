@@ -6,10 +6,10 @@ Schewise aims to bring review, history, environment management, mock data,
 schema mapping, and harmonization to database projects.
 
 **Current milestone:** a runnable Go/Fiber API, Next.js web app,
-PostgreSQL-backed authentication, local HTTPS, durable audit events, and
-contributor CI. Target database connections, schema versioning/rollback, mock
-database endpoints, harmonization, custom roles, AI, and CD are not implemented
-yet. See the [roadmap](docs/roadmap.md).
+PostgreSQL-backed authentication, scoped authorization and administration
+APIs/UI, local HTTPS, durable audit events, and contributor CI. Target database
+connections, schema versioning/rollback, mock database endpoints, harmonization,
+AI, and CD are not implemented yet. See the [roadmap](docs/roadmap.md).
 
 ## Run locally
 
@@ -43,7 +43,8 @@ This adds user-level CA trust using your login keychain, without admin-domain
 trust. See the [HTTPS and authentication guide](docs/authentication.md) for
 trust, removal, and other platforms. Do not bypass browser certificate warnings.
 Session cookies are always Secure, HttpOnly, and SameSite=Lax. Public
-registration is disabled; only an Administrator can create accounts.
+registration is disabled; creating accounts requires root account-management
+permission and authority to delegate Administrator.
 
 ```sh
 curl --cacert .local/root.crt https://localhost:8443/api/v1/health
@@ -58,6 +59,71 @@ Web edits in `apps/web/src` hot reload. After Go edits, use
 `docker compose restart api`. Rebuild after dependency/configuration changes.
 `make docker-down` stops services and preserves database and certificate
 volumes.
+
+## Access model
+
+Units form an organization tree with one permanent root and a maximum depth of
+six. Users receive roles through unit or connection assignments; an assignment
+at a unit applies to its descendants. Effective permissions are the union of
+matching assignments, and access is denied when none grant the requested
+permission. Units default to `inherit_access=true`. A unit with inheritance
+disabled includes its own assignments but stops grants from higher units,
+including for descendants and owned connections. A built-in Administrator
+assignment at root always bypasses this boundary; custom clones do not. The
+root's flag is permanently true, and moving a unit preserves its flag. Narrower
+assignments add permissions within the resulting inheritance chain.
+
+Four immutable system roles are seeded: Administrator, Manager, Developer, and
+Viewer. Custom roles and cloning are available through the Roles page and API.
+System-level permissions require root assignments. Delegation requires both
+membership-management permission and every permission being delegated; the last
+active root Administrator is protected. Every successful metadata mutation and
+its audit entry commit together.
+
+After signing in, Organization shows readable units. Open a unit to inspect its
+members and assign or revoke roles. Moving/deleting a unit requires a dry-run
+impact review in the confirmation dialog. Access explorer accepts a resource, a
+user, or both: browse a unit's users, inspect a user's accessible units,
+optionally filter by permission, or explain a specific user/resource/permission
+combination. Audit log supports actor/action/time filters. Controls follow
+server-evaluated permissions and the Go API rechecks every operation. Unreadable
+inherited origins are hidden individually, and assignments outside your
+delegation authority are read-only. The parent-access toggle requires
+`unit:manage_members` and an impact confirmation. A change that would remove the
+actor's membership-management permission is rejected; root Administrators retain
+their bypass. The impact includes before/after roles and permissions, affected
+users, and connections.
+
+Revocation uses `CanRevoke`: the assignment scope must lie within the actor's
+own unit subtree, the actor needs `unit:manage_members` there, and must hold
+every permission in the assigned role. Meeting these checks permits
+self-revocation, except for the last active root Administrator. Developers
+cannot revoke assignments. An ancestor grant cannot be revoked from a child; use
+an inheritance boundary to stop its effect instead. Hidden inherited sources and
+blocking units never expose their names/IDs in members or Explain.
+
+To bootstrap the first administrator, set `SCHEWISE_ADMIN_EMAIL` and
+`SCHEWISE_ADMIN_PASSWORD` before the first API startup (`make init` generates
+local values). This creates the initial root Administrator only; changing these
+variables never resets an existing account.
+
+To add a custom role:
+
+1. Sign in with root `role:manage` and the permissions you intend to grant.
+2. Open **Roles → Create role**, name it, and tick the grouped permissions.
+   Alternatively, clone a system/custom role, then edit the copy.
+3. Open the target unit and choose **Assign role** for an existing user, with an
+   optional note. You need `unit:manage_members` and every delegated permission
+   at that scope. Roles containing system permissions can only be assigned at
+   root.
+
+System roles are read-only. A custom role cannot be deleted while assigned.
+Public registration and invitations remain unavailable in the UI.
+
+The API contract is generated from backend DTOs/routes in
+[OpenAPI](docs/openapi.json), with generated TypeScript types checked in CI.
+Connection scopes have a fail-closed ownership adapter, not a real connection
+catalog or connector yet. See the [authorization guide](docs/authorization.md).
 
 ## Develop without API/web containers
 
@@ -79,7 +145,7 @@ native HTTPS setup and commands.
 ## Checks
 
 ```sh
-make check             # Format, vet, Go tests, lint/plugin checks, TypeScript
+make check             # API contract, format, vet, Go/web tests, lint, TypeScript
 make integration-test  # Auth/SQL tests in isolated Postgres schemas
 make build             # API and migration binaries, production Next.js build
 make smoke             # Production page/proxy/auth integration; ports 8080/3000 free
@@ -101,10 +167,13 @@ read-only. No CD or release publishing is configured.
 ```text
 cmd/api/                 API process lifecycle
 cmd/migrate/             Application migration CLI
-internal/auth/           Passwords, sessions, permissions, audit transactions
+internal/auth/           Passwords, sessions, account bootstrap, auth audits
+internal/rbac/           Scoped permission engine, metadata repositories, impact previews
 internal/config/         Process environment configuration
 internal/database/       PostgreSQL access and embedded Goose migrations
 internal/httpapi/        Fiber routes and HTTP/integration tests
+internal/apicontract/    Backend DTOs and route manifest for OpenAPI generation
+cmd/apigen/              OpenAPI generator
 apps/web/                Next.js App Router and authentication UI/proxy
 deploy/                  Local Caddy and Postgres initialization configuration
 scripts/                 Local setup and smoke checks
