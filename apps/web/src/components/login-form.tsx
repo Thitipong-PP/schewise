@@ -71,7 +71,7 @@ export function LoginForm() {
             type={passwordVisible ? "text" : "password"}
             autoComplete="current-password"
             required
-            maxLength={256}
+            maxLength={512}
             disabled={pending}
           />
           <button

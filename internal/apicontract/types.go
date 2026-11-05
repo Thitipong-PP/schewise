@@ -89,3 +89,8 @@ type CSRFResponse struct {
 type IdentityResponse struct {
 	User auth.User `json:"user"`
 }
+
+type AcceptInviteRequest struct {
+	DisplayName string `json:"display_name"`
+	Password    string `json:"password"`
+}

@@ -262,3 +262,14 @@ forest ordering, move choices, and client failure/CSRF request behavior.
 Invitations, account settings, and deactivation APIs/UI remain deferred. Groups,
 permission expiry, deny rules, composite roles, and schema/table/column-level
 permissions are deliberately absent.
+
+## Invitations
+
+Root `user:manage` gates listing, creation, revocation, and regeneration.
+`CanAssign` gates the role/scope on creation and regeneration, and live issuer
+permissions are rechecked again during acceptance under the shared write lock.
+Invitation links never grant the issuer authority they do not have. Units and
+roles can be deleted while an invite is pending; acceptance then returns the
+generic unavailable response without consuming the invite. Invite records do not
+count as active role assignments. The Invites UI offers only server-approved
+assignable roles, while the API independently enforces each operation.

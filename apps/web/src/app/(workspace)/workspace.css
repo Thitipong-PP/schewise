@@ -885,3 +885,13 @@
 .explorer-members .grant + .grant {
   margin-top: 16px;
 }
+
+.invite-pagination {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+.invite-link {
+  overflow-wrap: anywhere;
+}

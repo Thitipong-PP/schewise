@@ -49,7 +49,7 @@ func run(ctx context.Context, logger *zap.Logger) error {
 		return errors.New("application database migration failed")
 	}
 	logger.Info("database.migrated")
-	service, err := auth.New(db, logger, cfg.SessionTTL)
+	service, err := auth.New(db, logger, cfg.SessionTTL, auth.InviteConfig{PublicBaseURL: cfg.PublicBaseURL, TTL: cfg.InviteTTL})
 	if err != nil {
 		return errors.New("authentication initialization failed")
 	}

@@ -16,7 +16,7 @@ The roadmap can evolve as use cases are clarified.
 ## Authentication foundation (implemented before target connections)
 
 - [x] Dedicated application Postgres with Goose migrations.
-- [x] UUID users, Administrator-only registration, first-install env bootstrap.
+- [x] UUID users, bootstrap-only registration, first-install env bootstrap.
 - [x] Argon2id passwords, database sessions, revocation, expiry, and CSRF.
 - [x] HTTPS login UI and protected Next.js pages.
 - [x] Fiber HTTP, Zap request/lifecycle logs, and transactional audit events.
@@ -29,7 +29,9 @@ The roadmap can evolve as use cases are clarified.
       generated frontend/backend contracts.
 - [x] Unit inheritance boundaries, blocked-source explanations, centralized
       revocation rules, and searchable member/user pickers.
-- [ ] Invitations, MFA, verification, and recovery.
+- [x] Private invite-only onboarding, one-time links, and scoped role
+      assignment.
+- [ ] Account settings, MFA, verification, and recovery.
 
 ## Phase 1: connections and schema understanding
 

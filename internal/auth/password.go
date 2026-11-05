@@ -16,7 +16,7 @@ const passwordTime uint32 = 3
 const passwordThreads uint8 = 2
 
 func ValidPassword(password string) bool {
-	return utf8.ValidString(password) && utf8.RuneCountInString(password) >= 12 && len(password) <= 256
+	return utf8.ValidString(password) && utf8.RuneCountInString(password) >= 12 && utf8.RuneCountInString(password) <= 128 && len(password) <= 512 && !commonPassword(password)
 }
 
 func HashPassword(password string) (string, error) {
@@ -33,7 +33,7 @@ func HashPassword(password string) (string, error) {
 }
 
 func VerifyPassword(password, encoded string) bool {
-	if len(password) > 256 || len(encoded) > 256 {
+	if len(password) > 512 || len(encoded) > 256 {
 		return false
 	}
 	parts := strings.Split(encoded, "$")
@@ -63,4 +63,14 @@ func VerifyPassword(password, encoded string) bool {
 	}
 	actual := argon2.IDKey([]byte(password), salt, iterations, memory, threads, uint32(len(expected)))
 	return subtle.ConstantTimeCompare(actual, expected) == 1
+}
+
+// A deliberately small local denylist, with no network dependency. Matching is
+// case-insensitive; no character-class or composition rules are imposed.
+func commonPassword(password string) bool {
+	switch strings.ToLower(strings.TrimSpace(password)) {
+	case "password1234", "password12345", "password123456", "passwordpassword", "123456789012", "1234567890123", "12345678901234", "123456789012345", "1234567890123456", "qwertyuiop12", "qwertyuiop123", "qwerty1234567", "administrator", "letmeinletmein", "welcome12345", "welcome123456", "changeme12345":
+		return true
+	}
+	return false
 }

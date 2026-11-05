@@ -37,7 +37,9 @@ type fixture struct {
 	logs    *observer.ObservedLogs
 }
 
-func newFixture(t *testing.T) *fixture {
+func newFixture(t *testing.T) *fixture { return newAuthFixture(t, true) }
+
+func newAuthFixture(t *testing.T, bootstrap bool) *fixture {
 	t.Helper()
 	dsn := os.Getenv("SCHEWISE_TEST_DATABASE_URL")
 	if dsn == "" {
@@ -90,9 +92,11 @@ func newFixture(t *testing.T) *fixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	created, err := service.Bootstrap(ctx, "admin@example.test", testPassword)
-	if err != nil || !created {
-		t.Fatal("bootstrap failed", err)
+	if bootstrap {
+		created, err := service.Bootstrap(ctx, "admin@example.test", testPassword)
+		if err != nil || !created {
+			t.Fatal("bootstrap failed", err)
+		}
 	}
 	return &fixture{db: db, app: httpapi.NewApp(httpapi.Config{Auth: service, RBAC: rbac.NewRepository(db, logger, nil), Logger: logger, Origin: testOrigin}), service: service, logs: logs}
 }
@@ -200,7 +204,7 @@ func TestAuthenticationLifecycle(t *testing.T) {
 	expectStatus(t, f.request(t, "POST", "/api/v1/auth/login", credentials, cookie, "", testOrigin), 403)
 	expectStatus(t, f.request(t, "POST", "/api/v1/auth/login", credentials, cookie, csrf, "https://attacker.example"), 403)
 	expectStatus(t, f.request(t, "POST", "/api/v1/auth/login", credentials, cookie, csrf, ""), 403)
-	expectStatus(t, f.request(t, "POST", "/api/v1/auth/register", credentials, cookie, csrf, testOrigin), 401)
+	expectStatus(t, f.request(t, "POST", "/api/v1/auth/register", credentials, cookie, csrf, testOrigin), 403)
 	wrong := f.request(t, "POST", "/api/v1/auth/login", map[string]string{"email": "admin@example.test", "password": "Incorrect-password-42!"}, cookie, csrf, testOrigin)
 	unknown := f.request(t, "POST", "/api/v1/auth/login", map[string]string{"email": "unknown@example.test", "password": "Incorrect-password-42!"}, cookie, csrf, testOrigin)
 	expectStatus(t, wrong, 401)
@@ -223,25 +227,15 @@ func TestAuthenticationLifecycle(t *testing.T) {
 	_, otherCSRF := f.csrf(t, nil)
 	expectStatus(t, f.request(t, "POST", "/api/v1/auth/register", credentials, cookie, otherCSRF, testOrigin), 403)
 	input := map[string]string{"email": "second@example.test", "password": testPassword}
-	created := f.request(t, "POST", "/api/v1/auth/register", input, cookie, csrf, testOrigin)
-	expectStatus(t, created, 201)
-	var registered struct {
-		User auth.User `json:"user"`
-	}
-	if err := json.Unmarshal(created.body, &registered); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := uuid.Parse(registered.User.ID); err != nil || registered.User.Role != "Administrator" {
-		t.Fatal("invalid identity/role")
-	}
+	expectStatus(t, f.request(t, "POST", "/api/v1/auth/register", input, cookie, csrf, testOrigin), 403)
+	registeredUser := f.seedUser(t, "second@example.test")
 	var storedHash string
-	if err := f.db.QueryRow(`SELECT password_hash FROM users WHERE id=$1`, registered.User.ID).Scan(&storedHash); err != nil {
+	if err := f.db.QueryRow(`SELECT password_hash FROM users WHERE id=$1`, registeredUser.ID).Scan(&storedHash); err != nil {
 		t.Fatal(err)
 	}
 	if storedHash == testPassword || !strings.HasPrefix(storedHash, "$argon2id$") {
 		t.Fatal("database did not store an Argon2id hash")
 	}
-	expectStatus(t, f.request(t, "POST", "/api/v1/auth/register", input, cookie, csrf, testOrigin), 409)
 	injected := map[string]string{"email": "third@example.test", "password": testPassword, "role": "Administrator"}
 	expectStatus(t, f.request(t, "POST", "/api/v1/auth/register", injected, cookie, csrf, testOrigin), 400)
 	second, _, user := f.login(t, "second@example.test")
@@ -253,7 +247,7 @@ func TestAuthenticationLifecycle(t *testing.T) {
 		t.Fatal("logout did not expire the secure cookie")
 	}
 	expectStatus(t, f.request(t, "GET", "/api/v1/auth/me", nil, cookie, "", ""), 401)
-	for _, action := range []string{"user.bootstrap", "auth.login", "auth.csrf", "user.register", "session.revoke_user", "auth.logout"} {
+	for _, action := range []string{"user.bootstrap", "auth.login", "auth.csrf", "session.revoke_user", "auth.logout"} {
 		var count int
 		if err := f.db.QueryRow(`SELECT count(*) FROM audit_log WHERE action=$1`, action).Scan(&count); err != nil || count == 0 {
 			t.Fatalf("missing durable audit event %s", action)
@@ -273,10 +267,7 @@ func TestSessionExpiryAndPermissions(t *testing.T) {
 	f := newFixture(t)
 	_, _, administrator := f.login(t, "admin@example.test")
 	ctx := context.Background()
-	restricted, err := f.service.Register(ctx, &administrator, "restricted@example.test", testPassword, auth.Event{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	restricted := f.seedUser(t, "restricted@example.test")
 	cookie, csrf, _ := f.login(t, restricted.Email)
 	repo := rbac.NewRepository(f.db, zap.NewNop(), nil)
 	actor, target := uuid.MustParse(administrator.ID), uuid.MustParse(restricted.ID)
@@ -296,7 +287,7 @@ func TestSessionExpiryAndPermissions(t *testing.T) {
 	expectStatus(t, f.request(t, "DELETE", "/api/v1/users/"+restricted.ID+"/sessions", nil, cookie, csrf, testOrigin), 403)
 	// A forged display label cannot create authority; the active user's ID is rechecked.
 	restricted.Role = "Administrator"
-	if _, err := f.service.Register(ctx, restricted, "forged@example.test", testPassword, auth.Event{}); !errors.Is(err, auth.ErrForbidden) {
+	if _, err := f.service.Register(ctx, restricted, "forged@example.test", testPassword, auth.Event{}); !errors.Is(err, auth.ErrRegistrationClosed) {
 		t.Fatalf("forged role label: %v", err)
 	}
 	operator, err := repo.CreateRole(ctx, actor, rbac.RoleInput{Name: "AccountOperator", Permissions: []rbac.Permission{rbac.UserManage}})
@@ -306,7 +297,7 @@ func TestSessionExpiryAndPermissions(t *testing.T) {
 	if _, err := repo.Assign(ctx, actor, target, operator.ID, rbac.RootScope(), ""); err != nil {
 		t.Fatal(err)
 	}
-	// user:manage alone cannot create an Administrator through the legacy endpoint.
+	// Registration is closed even after the user gains account-management permission.
 	expectStatus(t, f.request(t, "POST", "/api/v1/auth/register", map[string]string{"email": "escalation@example.test", "password": testPassword}, cookie, csrf, testOrigin), 403)
 	// Session revocation uses the actual permission, not the name Administrator.
 	expectStatus(t, f.request(t, "DELETE", "/api/v1/users/"+restricted.ID+"/sessions", nil, cookie, csrf, testOrigin), 204)
@@ -321,10 +312,7 @@ func TestSessionExpiryAndPermissions(t *testing.T) {
 func TestDeactivatedUserCannotKeepOrRecreateSessions(t *testing.T) {
 	f := newFixture(t)
 	_, _, administrator := f.login(t, "admin@example.test")
-	user, err := f.service.Register(context.Background(), &administrator, "deactivated@example.test", testPassword, auth.Event{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	user := f.seedUser(t, "deactivated@example.test")
 	cookie, _, _ := f.login(t, user.Email)
 	repo := rbac.NewRepository(f.db, zap.NewNop(), nil)
 	if err := repo.SetUserActive(context.Background(), uuid.MustParse(administrator.ID), uuid.MustParse(user.ID), false); err != nil {
@@ -353,16 +341,50 @@ func TestBootstrapDoesNotResetExistingAdministrator(t *testing.T) {
 
 func TestFailedAuditRollsBackAccountCreation(t *testing.T) {
 	f := newFixture(t)
-	cookie, csrf, _ := f.login(t, "admin@example.test")
+	_, _, admin := f.login(t, "admin@example.test")
+	value, err := f.service.CreateInvite(context.Background(), &admin, auth.InviteInput{Email: "rolled-back@example.test", RoleID: uuid.MustParse(rbac.ViewerRoleID), Scope: rbac.RootScope()})
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.db.Exec(`ALTER TABLE audit_log RENAME TO temporarily_unavailable_audit`); err != nil {
 		t.Fatal(err)
 	}
-	got := f.request(t, "POST", "/api/v1/auth/register", map[string]string{"email": "rolled-back@example.test", "password": testPassword}, cookie, csrf, testOrigin)
-	expectStatus(t, got, 503)
+	previous, err := f.service.Anonymous(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	token := strings.TrimPrefix(value.Link, testOrigin+"/invite/")
+	if _, err := f.service.AcceptInvite(context.Background(), token, "Synthetic member", testPassword, previous, auth.Event{}); err == nil {
+		t.Fatal("unaudited account creation succeeded")
+	}
 	var count int
 	if err := f.db.QueryRow(`SELECT count(*) FROM users WHERE email='rolled-back@example.test'`).Scan(&count); err != nil || count != 0 {
-		t.Fatal("unaudited account creation was committed")
+		t.Fatal("unaudited account creation was committed", err)
 	}
+	var used bool
+	if err := f.db.QueryRow(`SELECT used_at IS NOT NULL FROM invites WHERE id=$1`, value.Invite.ID).Scan(&used); err != nil || used {
+		t.Fatal("failed acceptance consumed invite", err)
+	}
+}
+
+// Seed synthetic identities for unrelated session tests; public registration is
+// now bootstrap-only. Invitation creation/acceptance is covered independently.
+func (f *fixture) seedUser(t *testing.T, email string) *auth.User {
+	t.Helper()
+	var actor uuid.UUID
+	var hash string
+	if err := f.db.QueryRow(`SELECT id,password_hash FROM users WHERE email='admin@example.test'`).Scan(&actor, &hash); err != nil {
+		t.Fatal(err)
+	}
+	user := &auth.User{Email: email}
+	if err := f.db.QueryRow(`INSERT INTO users(email,password_hash) VALUES($1,$2) RETURNING id`, email, hash).Scan(&user.ID); err != nil {
+		t.Fatal(err)
+	}
+	repo := rbac.NewRepository(f.db, zap.NewNop(), nil)
+	if _, err := repo.Assign(context.Background(), actor, uuid.MustParse(user.ID), uuid.MustParse(rbac.AdministratorRoleID), rbac.RootScope(), "Synthetic session fixture"); err != nil {
+		t.Fatal(err)
+	}
+	return user
 }
 
 func TestLoginRateLimit(t *testing.T) {
@@ -377,10 +399,7 @@ func TestDeactivationRacingLoginLeavesNoAuthenticatedSession(t *testing.T) {
 	f := newFixture(t)
 	ctx := context.Background()
 	_, _, administrator := f.login(t, "admin@example.test")
-	user, err := f.service.Register(ctx, &administrator, "race@example.test", testPassword, auth.Event{})
-	if err != nil {
-		t.Fatal(err)
-	}
+	user := f.seedUser(t, "race@example.test")
 	anonymous, err := f.service.Anonymous(ctx)
 	if err != nil {
 		t.Fatal(err)
