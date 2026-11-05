@@ -4,6 +4,62 @@
       "AccessChange": {
         "additionalProperties": false,
         "properties": {
+          "after_permissions": {
+            "items": {
+              "enum": [
+                "user:manage",
+                "role:manage",
+                "audit:read",
+                "unit:read",
+                "unit:manage",
+                "unit:manage_members",
+                "connection:read",
+                "connection:manage",
+                "schema:read",
+                "docs:edit",
+                "tag:manage",
+                "ai:run",
+                "data:preview",
+                "data:query"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "after_roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleRef"
+            },
+            "type": "array"
+          },
+          "before_permissions": {
+            "items": {
+              "enum": [
+                "user:manage",
+                "role:manage",
+                "audit:read",
+                "unit:read",
+                "unit:manage",
+                "unit:manage_members",
+                "connection:read",
+                "connection:manage",
+                "schema:read",
+                "docs:edit",
+                "tag:manage",
+                "ai:run",
+                "data:preview",
+                "data:query"
+              ],
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "before_roles": {
+            "items": {
+              "$ref": "#/components/schemas/RoleRef"
+            },
+            "type": "array"
+          },
           "gained": {
             "items": {
               "enum": [
@@ -51,12 +107,25 @@
           "resource": {
             "$ref": "#/components/schemas/Scope"
           },
+          "user_email": {
+            "type": "string"
+          },
           "user_id": {
             "format": "uuid",
             "type": "string"
           }
         },
-        "required": ["user_id", "resource", "gained", "lost"],
+        "required": [
+          "user_email",
+          "before_roles",
+          "after_roles",
+          "before_permissions",
+          "after_permissions",
+          "user_id",
+          "resource",
+          "gained",
+          "lost"
+        ],
         "type": "object"
       },
       "AccessContext": {
@@ -273,6 +342,25 @@
         "required": ["entries", "has_more"],
         "type": "object"
       },
+      "BlockView": {
+        "additionalProperties": false,
+        "properties": {
+          "assignment": {
+            "$ref": "#/components/schemas/AssignmentView"
+          },
+          "reason_text": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/UnitRef"
+          }
+        },
+        "required": ["assignment", "source", "reason_text"],
+        "type": "object"
+      },
       "CSRFResponse": {
         "additionalProperties": false,
         "properties": {
@@ -399,6 +487,12 @@
           "allowed": {
             "type": "boolean"
           },
+          "blocked": {
+            "items": {
+              "$ref": "#/components/schemas/BlockView"
+            },
+            "type": "array"
+          },
           "grants": {
             "items": {
               "$ref": "#/components/schemas/AssignmentView"
@@ -412,7 +506,7 @@
             "type": "string"
           }
         },
-        "required": ["allowed", "grants", "reason", "reason_text"],
+        "required": ["blocked", "allowed", "grants", "reason", "reason_text"],
         "type": "object"
       },
       "IdentityResponse": {
@@ -451,6 +545,23 @@
           }
         },
         "required": ["executable", "blockers", "changes", "connections"],
+        "type": "object"
+      },
+      "InheritRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "inherit_access": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["inherit_access"],
         "type": "object"
       },
       "Member": {
@@ -877,6 +988,9 @@
             "format": "uuid",
             "type": "string"
           },
+          "inherit_access": {
+            "type": "boolean"
+          },
           "is_root": {
             "type": "boolean"
           },
@@ -921,6 +1035,7 @@
           }
         },
         "required": [
+          "inherit_access",
           "id",
           "parent_id",
           "name",
@@ -3748,6 +3863,138 @@
         "summary": "Preview delete blockers and access changes"
       }
     },
+    "/api/v1/units/{id}/dry-run/inherit-access": {
+      "post": {
+        "operationId": "previewInheritance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InheritRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Impact"
+                }
+              }
+            },
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Preview inheritance changes, roles, and affected connections"
+      }
+    },
     "/api/v1/units/{id}/dry-run/move": {
       "post": {
         "operationId": "previewMove",
@@ -3878,6 +4125,131 @@
           }
         ],
         "summary": "Preview permission changes before moving a unit"
+      }
+    },
+    "/api/v1/units/{id}/inherit-access": {
+      "patch": {
+        "operationId": "setInheritance",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InheritRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            },
+            "description": "Request rejected; unreadable and missing units both return 403"
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "summary": "Set an inheritance boundary, protecting against self-lockout"
       }
     },
     "/api/v1/units/{id}/members": {

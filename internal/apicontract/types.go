@@ -26,6 +26,9 @@ type CreateUnitRequest struct {
 type MoveRequest struct {
 	ParentID uuid.UUID `json:"parent_id"`
 }
+type InheritRequest struct {
+	InheritAccess *bool `json:"inherit_access"`
+}
 type EmptyRequest struct{}
 type RoleRequest struct {
 	Name        string            `json:"name"`

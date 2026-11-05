@@ -57,31 +57,18 @@ func (v *view) assignmentView(ctx context.Context, a Assignment, role Role, targ
 	result.SourceUnit = &UnitRef{ID: source.ID, Name: source.Name}
 	result.Note = &a.Note
 	result.CreatedAt = &a.CreatedAt
-	result.CanRevoke, err = v.engine.CanAssign(ctx, v.actor, a.RoleID, a.Scope)
+	result.CanRevoke, err = v.engine.CanRevoke(ctx, v.actor, a)
+	if errors.Is(err, ErrLastAdministrator) {
+		result.ReadOnlyReason = ErrLastAdministrator.Error()
+		return result, nil
+	}
 	if err != nil {
 		return result, err
 	}
 	if !result.CanRevoke {
-		result.ReadOnlyReason = "This assignment is outside your manageable subtree or grants permissions you cannot delegate."
-		return result, nil
+		result.ReadOnlyReason = "This assignment is outside your manageable subtree or grants permissions you do not hold."
 	}
-	active, err := v.reader.ActiveUser(ctx, a.UserID)
-	if err != nil {
-		return result, err
-	}
-	if active && a.RoleID == uuid.MustParse(AdministratorRoleID) && a.Scope == RootScope() {
-		if v.lastAdmins == nil {
-			count, err := remainingAdministrators(ctx, v.q, uuid.Nil, uuid.Nil)
-			if err != nil {
-				return result, err
-			}
-			v.lastAdmins = &count
-		}
-		if *v.lastAdmins <= 1 {
-			result.CanRevoke = false
-			result.ReadOnlyReason = ErrLastAdministrator.Error()
-		}
-	}
+
 	return result, nil
 }
 func (r *Repository) Members(ctx context.Context, actor, unitID uuid.UUID, directOnly, accessOnly bool) ([]Member, error) {
@@ -129,7 +116,7 @@ func (r *Repository) Members(ctx context.Context, actor, unitID uuid.UUID, direc
 			if accessOnly && len(member.Permissions) == 0 {
 				continue
 			}
-			grants, err := v.reader.Grants(ctx, user.ID, chain)
+			grants, _, _, err := v.engine.applicableGrants(ctx, user.ID, scope)
 			if err != nil {
 				return err
 			}
@@ -143,7 +130,9 @@ func (r *Repository) Members(ctx context.Context, actor, unitID uuid.UUID, direc
 				}
 				member.Assignments = append(member.Assignments, item)
 			}
-			result = append(result, member)
+			if len(member.Assignments) > 0 {
+				result = append(result, member)
+			}
 		}
 		return nil
 	})
@@ -187,11 +176,7 @@ func (r *Repository) UserAssignments(ctx context.Context, actor, target uuid.UUI
 			} else if err != nil {
 				return err
 			}
-			chain, err := v.engine.resolve(ctx, scope)
-			if err != nil {
-				return err
-			}
-			grants, err := v.reader.Grants(ctx, target, chain)
+			grants, _, _, err := v.engine.applicableGrants(ctx, target, scope)
 			if err != nil {
 				return err
 			}
@@ -248,7 +233,7 @@ func (r *Repository) AccessForUser(ctx context.Context, actor, target uuid.UUID)
 	return result, err
 }
 func (r *Repository) ExplainFor(ctx context.Context, actor, target uuid.UUID, permission Permission, resource Scope) (ExplanationView, error) {
-	result := ExplanationView{Grants: []AssignmentView{}}
+	result := ExplanationView{Grants: []AssignmentView{}, Blocked: []BlockView{}}
 	err := r.read(ctx, actor, func(v *view) error {
 		if resource.Type != ScopeUnit {
 			return ErrForbidden
@@ -293,6 +278,44 @@ func (r *Repository) ExplainFor(ctx context.Context, actor, target uuid.UUID, pe
 					result.Grants = append(result.Grants, item)
 					break
 				}
+			}
+		}
+		for _, block := range explanation.Blocked {
+			for _, grant := range grants {
+				if grant.Assignment.ID != block.AssignmentID {
+					continue
+				}
+				assignment, err := v.assignmentView(ctx, grant.Assignment, grant.Role, resource)
+				if err != nil {
+					return err
+				}
+				assignment.CanRevoke = false
+				assignment.ReadOnlyReason = "This assignment does not apply beyond the inheritance boundary."
+				item := BlockView{Assignment: assignment, Source: "blocked_hidden", ReasonText: "Access from above is blocked by an inheritance boundary you do not have access to."}
+				visible, err := v.readable(ctx, UnitScope(block.BlockedBy))
+				if err != nil {
+					return err
+				}
+				if visible {
+					unit, err := v.reader.Unit(ctx, block.BlockedBy)
+					if err != nil {
+						return err
+					}
+					item.Source = "blocked"
+					item.Unit = &UnitRef{ID: unit.ID, Name: unit.Name}
+					item.ReasonText = "Access from above is blocked because " + unit.Name + " does not inherit access from parent units."
+				}
+				if !visible {
+					item.Assignment = AssignmentView{Role: assignment.Role, Permissions: assignment.Permissions, Source: SourceHidden, CanRevoke: false, ReadOnlyReason: item.ReasonText}
+				}
+				result.Blocked = append(result.Blocked, item)
+			}
+		}
+		if len(result.Blocked) > 0 {
+			if result.Allowed {
+				result.ReasonText += " Some assignments from above were blocked by an inheritance boundary."
+			} else {
+				result.ReasonText = "Access from parent units is disabled at an inheritance boundary."
 			}
 		}
 		return nil
@@ -353,7 +376,7 @@ func (r *Repository) AssignmentAtReadableScope(ctx context.Context, actor, id uu
 		if err := v.requireRead(ctx, result.Scope); err != nil {
 			return err
 		}
-		allowed, err := v.engine.CanAssign(ctx, actor, result.RoleID, result.Scope)
+		allowed, err := v.engine.CanRevoke(ctx, actor, result)
 		if err != nil {
 			return err
 		}

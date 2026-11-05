@@ -99,8 +99,10 @@ func (s *server) adminError(c fiber.Ctx, err error) error {
 		status, code, message = 409, "system_role_read_only", "System roles cannot be edited or deleted. Clone the role instead."
 	case errors.Is(err, rbac.ErrNotEmpty):
 		status, code, message = 409, "not_empty", "The unit or role still has dependent records."
+	case errors.Is(err, rbac.ErrSelfLockout):
+		status, code, message = 409, "self_lockout", "This change would remove your permission to manage assignments at this unit."
 	case errors.Is(err, rbac.ErrRootProtected):
-		status, code, message = 409, "root_protected", "The root unit cannot be moved or deleted."
+		status, code, message = 409, "root_protected", "The root unit cannot be moved, deleted, or have its inheritance changed."
 	case errors.Is(err, rbac.ErrCycle):
 		status, code, message = 409, "unit_cycle", "A unit cannot be moved beneath itself or a descendant."
 	case errors.Is(err, rbac.ErrDepth):
@@ -136,6 +138,7 @@ func (s *server) visibleID(c fiber.Ctx) (uuid.UUID, error) {
 }
 func (s *server) registerAdmin(app *fiber.App) {
 	handlers := map[string]fiber.Handler{
+		"setInheritance": s.setInheritance, "previewInheritance": s.previewInheritance,
 		"context": s.accessContext, "units": s.units, "unitTree": s.unitTree, "createUnit": s.createUnit, "unit": s.unit, "updateUnit": s.updateUnit, "moveUnit": s.moveUnit, "deleteUnit": s.deleteUnit, "previewMove": s.previewMove, "previewDelete": s.previewDelete,
 		"roles": s.roles, "createRole": s.createRole, "updateRole": s.updateRole, "cloneRole": s.cloneRole, "deleteRole": s.deleteRole, "catalog": s.catalog, "assignableRoles": s.assignableRoles,
 		"members": s.members, "unitAssignments": s.unitAssignments, "unitAccess": s.unitAccess, "users": s.users, "userAssignments": s.userAssignments, "userAccess": s.userAccess, "assign": s.assign, "revoke": s.revoke, "explain": s.explain, "audit": s.audit,
@@ -556,4 +559,40 @@ func (s *server) audit(c fiber.Ctx) error {
 		return s.adminError(c, err)
 	}
 	return respond(c, value)
+}
+
+func (s *server) inheritanceInput(c fiber.Ctx) (uuid.UUID, bool, error) {
+	id, err := s.visibleID(c)
+	if err != nil {
+		return id, false, err
+	}
+	input, err := body[api.InheritRequest](c)
+	if err != nil {
+		return id, false, err
+	}
+	if input.InheritAccess == nil {
+		return id, false, rbac.ErrInvalidInput
+	}
+	return id, *input.InheritAccess, nil
+}
+func (s *server) setInheritance(c fiber.Ctx) error {
+	id, value, err := s.inheritanceInput(c)
+	if err == nil {
+		err = s.RBAC.SetInheritAccess(c.Context(), actorUUID(c), id, value)
+	}
+	if err != nil {
+		return s.adminError(c, err)
+	}
+	return respond(c, nil)
+}
+func (s *server) previewInheritance(c fiber.Ctx) error {
+	id, value, err := s.inheritanceInput(c)
+	if err != nil {
+		return s.adminError(c, err)
+	}
+	impact, err := s.RBAC.DryRunInheritAccess(c.Context(), actorUUID(c), id, value)
+	if err != nil {
+		return s.adminError(c, err)
+	}
+	return respond(c, impact)
 }

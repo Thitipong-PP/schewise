@@ -49,7 +49,9 @@ be applied to a target connection.
   transaction and a common advisory lock. Step 2B exposes the permission-gated
   unit/role/assignment API and monochrome administration UI. Read projections
   redact inaccessible ancestors per assignment; Go alone determines capability
-  flags. Public registration remains disabled.
+  flags. Inheritance boundaries stop ancestor grants while retaining built-in
+  root Administrator bypasses. `CanRevoke` centralizes revoke authority. Public
+  registration remains disabled.
 - **API contracts:** `internal/apicontract` defines request/response DTOs and
   the administration route manifest used by Fiber registration and the OpenAPI
   3.1 generator. `openapi-typescript` generates frontend types; `openapi-fetch`
@@ -61,9 +63,11 @@ See [ADR 0001](adr/0001-foundation.md) for the original foundation and
 [ADR 0002](adr/0002-authentication.md) for the HTTP, storage, and auth update.
 [ADR 0003](adr/0003-scoped-rbac.md) updates the authorization model;
 [ADR 0004](adr/0004-administration-api.md) records the administration contract
-and inherited-source privacy boundary. [Authentication](authentication.md)
-documents guarantees and deployment limits; [authorization](authorization.md)
-describes the engine, repositories, and administration API.
+and inherited-source privacy boundary.
+[ADR 0005](adr/0005-inheritance-boundaries.md) adds inheritance boundaries and
+centralized revocation. [Authentication](authentication.md) documents guarantees
+and deployment limits; [authorization](authorization.md) describes the engine,
+repositories, and administration API.
 
 ## Database versioning direction
 

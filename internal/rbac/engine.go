@@ -109,27 +109,30 @@ func (e *Engine) explain(ctx context.Context, user uuid.UUID, permission Permiss
 		denied.Reason = "inactive_or_unknown_user"
 		return denied, nil
 	}
-	chain, err := e.resolve(ctx, resource)
+	accepted, blocked, boundary, err := e.applicableGrants(ctx, user, resource)
 	if err != nil {
 		return denied, err
 	}
-	candidates, err := e.reader.Grants(ctx, user, chain)
-	if err != nil {
-		return denied, err
+	matching := func(candidate RoleGrant) bool {
+		return (!permission.SystemLevel() || candidate.Assignment.Scope == RootScope()) && slices.Contains(candidate.Role.Permissions, permission)
 	}
-	for _, candidate := range candidates {
-		assignment := candidate.Assignment
-		// Defend even against a faulty reader returning unrelated assignments.
-		if assignment.UserID != user || assignment.RoleID != candidate.Role.ID || !slices.Contains(chain, assignment.Scope) {
-			continue
+	grant := func(candidate RoleGrant) Grant {
+		a := candidate.Assignment
+		return Grant{AssignmentID: a.ID, RoleID: candidate.Role.ID, Role: candidate.Role.Name, Scope: a.Scope, Inherited: a.Scope != resource}
+	}
+	denied.Blocked = []BlockedGrant{}
+	for _, candidate := range accepted {
+		if matching(candidate) {
+			denied.Grants = append(denied.Grants, grant(candidate))
 		}
-		if permission.SystemLevel() && assignment.Scope != RootScope() {
-			continue
+	}
+	for _, candidate := range blocked {
+		if matching(candidate) {
+			denied.Blocked = append(denied.Blocked, BlockedGrant{Grant: grant(candidate), BlockedBy: boundary.ID})
 		}
-		if !slices.Contains(candidate.Role.Permissions, permission) {
-			continue
-		}
-		denied.Grants = append(denied.Grants, Grant{AssignmentID: assignment.ID, RoleID: candidate.Role.ID, Role: candidate.Role.Name, Scope: assignment.Scope, Inherited: assignment.Scope != resource})
+	}
+	if len(denied.Blocked) > 0 {
+		denied.Reason = "blocked_by_inherit_access"
 	}
 	sort.Slice(denied.Grants, func(i, j int) bool {
 		return denied.Grants[i].AssignmentID.String() < denied.Grants[j].AssignmentID.String()
@@ -175,6 +178,117 @@ func (e *Engine) canAssign(ctx context.Context, actor, roleID uuid.UUID, scope S
 		allowed, err = e.Can(ctx, actor, permission, scope)
 		if err != nil || !allowed {
 			return false, err
+		}
+	}
+	return true, nil
+}
+
+// applicableGrants keeps physical ancestry separate from the inheritance walk.
+// A boundary includes its own assignments; only the built-in root Administrator
+// bypasses it. Blocked candidates are retained solely for Explain provenance.
+func (e *Engine) applicableGrants(ctx context.Context, user uuid.UUID, resource Scope) (accepted, blocked []RoleGrant, boundary *Unit, err error) {
+	chain, err := e.resolve(ctx, resource)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	first := 0
+	for i := len(chain) - 1; i >= 0; i-- {
+		if chain[i].Type != ScopeUnit {
+			continue
+		}
+		unit, loadErr := e.reader.Unit(ctx, chain[i].ID)
+		if loadErr != nil {
+			return nil, nil, nil, loadErr
+		}
+		if !unit.InheritAccess {
+			first = i
+			boundary = &unit
+			break
+		}
+	}
+	candidates, err := e.reader.Grants(ctx, user, chain)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	for _, candidate := range candidates {
+		a := candidate.Assignment
+		if a.UserID != user || a.RoleID != candidate.Role.ID || !slices.Contains(chain, a.Scope) {
+			continue
+		}
+		if slices.Contains(chain[first:], a.Scope) || rootAdministratorGrant(candidate) {
+			accepted = append(accepted, candidate)
+		} else {
+			blocked = append(blocked, candidate)
+		}
+	}
+	return accepted, blocked, boundary, nil
+}
+func rootAdministratorGrant(grant RoleGrant) bool {
+	return grant.Assignment.Scope == RootScope() && grant.Assignment.RoleID == uuid.MustParse(AdministratorRoleID) && grant.Role.ID == grant.Assignment.RoleID && grant.Role.IsSystem
+}
+func (e *Engine) rootAdministrator(ctx context.Context, user uuid.UUID) (bool, error) {
+	active, err := e.reader.ActiveUser(ctx, user)
+	if err != nil || !active {
+		return false, err
+	}
+	grants, err := e.reader.Grants(ctx, user, []Scope{RootScope()})
+	if err != nil {
+		return false, err
+	}
+	for _, grant := range grants {
+		if grant.Assignment.UserID == user && rootAdministratorGrant(grant) {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// CanRevoke owns all revocation authority, including the last-admin invariant.
+// Callers supply a persisted assignment; repository writes recheck under Lock.
+func (e *Engine) CanRevoke(ctx context.Context, actor uuid.UUID, assignment Assignment) (bool, error) {
+	allowed := false
+	err := e.withSnapshot(ctx, func(view *Engine) error {
+		var err error
+		allowed, err = view.canRevoke(ctx, actor, assignment)
+		return err
+	})
+	if err != nil {
+		return false, err
+	}
+	return allowed, nil
+}
+func (e *Engine) canRevoke(ctx context.Context, actor uuid.UUID, assignment Assignment) (bool, error) {
+	allowed, err := e.canAssign(ctx, actor, assignment.RoleID, assignment.Scope)
+	if err != nil || !allowed {
+		return false, err
+	}
+	grants, _, _, err := e.applicableGrants(ctx, actor, assignment.Scope)
+	if err != nil {
+		return false, err
+	}
+	within := false
+	for _, grant := range grants {
+		if grant.Assignment.Scope.Type == ScopeUnit && slices.Contains(grant.Role.Permissions, UnitManageMembers) {
+			within = true
+			break
+		}
+	}
+	if !within {
+		return false, nil
+	}
+	if assignment.RoleID == uuid.MustParse(AdministratorRoleID) && assignment.Scope == RootScope() {
+		active, err := e.reader.ActiveUser(ctx, assignment.UserID)
+		if err != nil {
+			return false, err
+		}
+		if active {
+			count, err := e.reader.ActiveRootAdministrators(ctx)
+			if err != nil {
+				return false, err
+			}
+			if count <= 1 {
+				return false, ErrLastAdministrator
+			}
 		}
 	}
 	return true, nil

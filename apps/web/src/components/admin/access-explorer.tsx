@@ -5,10 +5,15 @@ import { useCallback, useState } from "react";
 import { Check, CircleSlash, ScanSearch } from "lucide-react";
 import { api, csrfHeaders, message, result } from "@/lib/admin-api";
 import type { components } from "@/lib/api-types";
-import type { Permission } from "@/lib/admin-model";
+import {
+  blockingLabel,
+  type Permission,
+  type UserInfo,
+} from "@/lib/admin-model";
 import { useAccess } from "./shell";
 import { Grant } from "./unit-detail";
-import { Feedback, QueryState, useQuery } from "./shared";
+import { UserPicker } from "./user-picker";
+import { Feedback, QueryState, Select, useQuery } from "./shared";
 
 type Explanation = components["schemas"]["ExplanationView"];
 type UserAccess = components["schemas"]["UserAccess"];
@@ -28,8 +33,7 @@ export function AccessExplorer() {
     }, []),
   );
   const [unit, setUnit] = useState("");
-  const [user, setUser] = useState("");
-  const [search, setSearch] = useState("");
+  const [user, setUser] = useState<UserInfo | null>(null);
   const [permission, setPermission] = useState<Permission>("unit:read");
   const [answer, setAnswer] = useState<{
     explanation: Explanation;
@@ -41,23 +45,9 @@ export function AccessExplorer() {
   const canInspectOthers =
     context?.root_permissions.includes("user:manage") ||
     selectedUnit?.permissions.includes("unit:manage_members");
-  const users = useQuery(
-    useCallback(
-      async (signal) => {
-        if (!context) return [];
-        if (!unit || !canInspectOthers) return [context.user];
-        return result(
-          await api.GET("/api/v1/users", {
-            params: { query: { unit_id: unit, q: search } },
-            signal,
-          }),
-        ).users;
-      },
-      [context, unit, canInspectOthers, search],
-    ),
-  );
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!user || busy) return;
     setBusy(true);
     setError("");
     setAnswer(null);
@@ -67,13 +57,13 @@ export function AccessExplorer() {
         api.POST("/api/v1/access/explain", {
           params: { header },
           body: {
-            user_id: user,
+            user_id: user.id,
             permission,
             resource: { type: "unit", id: unit },
           },
         }),
         api.GET("/api/v1/users/{id}/access", {
-          params: { path: { id: user } },
+          params: { path: { id: user.id } },
         }),
       ]);
       setAnswer({ explanation: result(explanation), access: result(access) });
@@ -96,14 +86,13 @@ export function AccessExplorer() {
         <form className="explorer-form" onSubmit={submit}>
           <label className="field">
             Resource
-            <select
+            <Select
               value={unit}
               required
               disabled={busy}
               onChange={(e) => {
                 setUnit(e.target.value);
-                setUser("");
-                setSearch("");
+                setUser(null);
                 setAnswer(null);
               }}
             >
@@ -115,48 +104,23 @@ export function AccessExplorer() {
                   {u.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
-          {canInspectOthers && (
-            <label className="field">
-              Find a user
-              <input
-                type="search"
-                placeholder="Search by email"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setUser("");
-                  setAnswer(null);
-                }}
-                disabled={busy}
-              />
-            </label>
-          )}
-          <label className="field">
-            User
-            <select
-              value={user}
-              required
-              disabled={busy || users.loading || !unit}
-              onChange={(e) => {
-                setUser(e.target.value);
-                setAnswer(null);
-              }}
-            >
-              <option value="" disabled>
-                Select a user
-              </option>
-              {users.data?.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.email}
-                </option>
-              ))}
-            </select>
-          </label>
+          <UserPicker
+            key={unit}
+            label="User"
+            unitID={unit}
+            value={user}
+            onChange={(value) => {
+              setUser(value);
+              setAnswer(null);
+            }}
+            disabled={busy || !unit}
+            selfOnly={!canInspectOthers ? context?.user : undefined}
+          />
           <label className="field">
             Permission
-            <select
+            <Select
               value={permission}
               required
               disabled={busy}
@@ -170,7 +134,7 @@ export function AccessExplorer() {
                   {p.label} ({p.permission})
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
           <p className="muted field-description">
             {
@@ -178,11 +142,8 @@ export function AccessExplorer() {
                 ?.description
             }
           </p>
-          <Feedback error={users.error || error} />
-          <button
-            disabled={busy || !unit || !user || !users.data}
-            type="submit"
-          >
+          <Feedback error={error} />
+          <button disabled={busy || !unit || !user} type="submit">
             <ScanSearch size={16} />
             {busy ? "Checking…" : "Explain access"}
           </button>
@@ -203,6 +164,12 @@ export function AccessExplorer() {
           <p>{answer.explanation.reason_text}</p>
           {answer.explanation.grants.map((grant, i) => (
             <Grant key={grant.id ?? i} assignment={grant} />
+          ))}
+          {answer.explanation.blocked.map((block, index) => (
+            <div className="blocked-grant" key={index}>
+              <p className="notice">{blockingLabel(block)}</p>
+              <Grant assignment={block.assignment} />
+            </div>
           ))}
           <div className="section-heading">
             <h2>Accessible units</h2>

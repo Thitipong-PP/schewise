@@ -19,15 +19,16 @@ type UserInfo struct {
 	IsActive bool      `json:"is_active"`
 }
 type UnitView struct {
-	ID          uuid.UUID    `json:"id"`
-	ParentID    *uuid.UUID   `json:"parent_id"`
-	Name        string       `json:"name"`
-	Description string       `json:"description"`
-	Kind        string       `json:"kind"`
-	Depth       int          `json:"depth"`
-	IsRoot      bool         `json:"is_root"`
-	CanMove     bool         `json:"can_move"`
-	Permissions []Permission `json:"permissions"`
+	InheritAccess bool         `json:"inherit_access"`
+	ID            uuid.UUID    `json:"id"`
+	ParentID      *uuid.UUID   `json:"parent_id"`
+	Name          string       `json:"name"`
+	Description   string       `json:"description"`
+	Kind          string       `json:"kind"`
+	Depth         int          `json:"depth"`
+	IsRoot        bool         `json:"is_root"`
+	CanMove       bool         `json:"can_move"`
+	Permissions   []Permission `json:"permissions"`
 }
 type UnitNode struct {
 	Unit     UnitView   `json:"unit"`
@@ -86,7 +87,15 @@ type UserAccess struct {
 	User  UserInfo     `json:"user"`
 	Units []UnitAccess `json:"units"`
 }
+type BlockView struct {
+	Assignment AssignmentView `json:"assignment"`
+	Source     string         `json:"source"`
+	Unit       *UnitRef       `json:"unit,omitempty"`
+	ReasonText string         `json:"reason_text"`
+}
+
 type ExplanationView struct {
+	Blocked    []BlockView      `json:"blocked"`
 	Allowed    bool             `json:"allowed"`
 	Grants     []AssignmentView `json:"grants"`
 	Reason     string           `json:"reason"`
@@ -99,6 +108,7 @@ type AccessContext struct {
 }
 
 type cachedReader struct {
+	administrators *int
 	Reader
 	users  map[uuid.UUID]bool
 	units  map[uuid.UUID]Unit
@@ -152,11 +162,10 @@ func (r *cachedReader) Grants(ctx context.Context, user uuid.UUID, scopes []Scop
 }
 
 type view struct {
-	q          *sql.Tx
-	reader     *cachedReader
-	engine     *Engine
-	actor      uuid.UUID
-	lastAdmins *int
+	q      *sql.Tx
+	reader *cachedReader
+	engine *Engine
+	actor  uuid.UUID
 }
 
 func (r *Repository) read(ctx context.Context, actor uuid.UUID, fn func(*view) error) error {
@@ -165,7 +174,7 @@ func (r *Repository) read(ctx context.Context, actor uuid.UUID, fn func(*view) e
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	reader := &cachedReader{Reader: NewSQLReader(tx, r.connections), users: map[uuid.UUID]bool{}, units: map[uuid.UUID]Unit{}, roles: map[uuid.UUID]Role{}, grants: map[string][]RoleGrant{}}
+	reader := cacheReader(NewSQLReader(tx, r.connections))
 	v := &view{q: tx, reader: reader, engine: NewEngine(reader), actor: actor}
 	if err := fn(v); err != nil {
 		return err
@@ -211,7 +220,7 @@ func userInfo(ctx context.Context, q Queryer, id uuid.UUID) (UserInfo, error) {
 	return user, storeError(err)
 }
 func (v *view) unitView(ctx context.Context, unit Unit) (UnitView, error) {
-	result := UnitView{ID: unit.ID, Name: unit.Name, Description: unit.Description, Kind: unit.Kind, Depth: len(unit.Ancestors) + 1, IsRoot: unit.ID == RootScope().ID}
+	result := UnitView{InheritAccess: unit.InheritAccess, ID: unit.ID, Name: unit.Name, Description: unit.Description, Kind: unit.Kind, Depth: len(unit.Ancestors) + 1, IsRoot: unit.ID == RootScope().ID}
 	var err error
 	result.Permissions, err = effective(ctx, v.engine, v.actor, UnitScope(unit.ID))
 	if err != nil {
@@ -431,4 +440,18 @@ func (r *Repository) AssignableRoles(ctx context.Context, actor, unitID uuid.UUI
 		return nil
 	})
 	return result, err
+}
+
+func cacheReader(reader Reader) *cachedReader {
+	return &cachedReader{Reader: reader, users: map[uuid.UUID]bool{}, units: map[uuid.UUID]Unit{}, roles: map[uuid.UUID]Role{}, grants: map[string][]RoleGrant{}}
+}
+func (r *cachedReader) ActiveRootAdministrators(ctx context.Context) (int, error) {
+	if r.administrators != nil {
+		return *r.administrators, nil
+	}
+	count, err := r.Reader.ActiveRootAdministrators(ctx)
+	if err == nil {
+		r.administrators = &count
+	}
+	return count, err
 }

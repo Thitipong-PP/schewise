@@ -21,8 +21,17 @@ import {
   type Impact,
   type Unit,
 } from "@/lib/admin-model";
+import { ImpactReport } from "./impact-report";
+import { InheritanceDialog } from "./inheritance-dialog";
 import { useAccess } from "./shell";
-import { Actions, Feedback, Modal, QueryState, useQuery } from "./shared";
+import {
+  Actions,
+  Feedback,
+  Modal,
+  QueryState,
+  Select,
+  useQuery,
+} from "./shared";
 
 type Edit = { mode: "create" | "edit" | "move" | "delete"; unit: Unit };
 
@@ -36,6 +45,7 @@ export function Organization() {
       [],
     ),
   );
+  const [inheritance, setInheritance] = useState<Unit | null>(null);
   const [edit, setEdit] = useState<Edit | null>(null);
   if (!context?.can_read_units)
     return (
@@ -64,6 +74,10 @@ export function Organization() {
           </button>
         )}
       </div>
+      <p className="muted access-explanation">
+        Turning off parent access keeps direct unit assignments and root
+        Administrator access.
+      </p>
       <QueryState query={query} />
       {query.data && (
         <div className="table-scroll">
@@ -73,6 +87,7 @@ export function Organization() {
                 <th scope="col">Unit</th>
                 <th scope="col">Kind</th>
                 <th scope="col">Access</th>
+                <th scope="col">Parent access</th>
                 <th scope="col">
                   <span className="sr-only">Actions</span>
                 </th>
@@ -118,6 +133,28 @@ export function Organization() {
                     {unit.permissions.includes("unit:manage")
                       ? "Manage"
                       : "Read"}
+                  </td>
+                  <td>
+                    {unit.is_root ? (
+                      <span className="muted">Always inherited</span>
+                    ) : unit.permissions.includes("unit:manage_members") ? (
+                      <label className="inherit-switch">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          checked={unit.inherit_access}
+                          aria-label={`Inherit access from parent units for ${unit.name}`}
+                          onChange={() => setInheritance(unit)}
+                        />
+                        <span>
+                          {unit.inherit_access ? "Inherited" : "Isolated"}
+                        </span>
+                      </label>
+                    ) : (
+                      <span className="muted">
+                        {unit.inherit_access ? "Inherited" : "Isolated"}
+                      </span>
+                    )}
                   </td>
                   <td>
                     <div className="row-actions">
@@ -177,6 +214,18 @@ export function Organization() {
             </tbody>
           </table>
         </div>
+      )}
+      {inheritance && (
+        <InheritanceDialog
+          unit={inheritance}
+          units={units}
+          close={() => setInheritance(null)}
+          saved={() => {
+            setInheritance(null);
+            query.reload();
+            router.refresh();
+          }}
+        />
       )}
       {edit && (
         <UnitDialog
@@ -329,7 +378,7 @@ function UnitDialog({
         {(mode === "move" || mode === "create") && (
           <label className="field">
             Parent unit
-            <select
+            <Select
               required
               value={parent}
               disabled={busy}
@@ -346,7 +395,7 @@ function UnitDialog({
                   {u.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </label>
         )}
         {mode === "move" && destinations.length === 0 && (
@@ -390,65 +439,5 @@ function UnitDialog({
         />
       </form>
     </Modal>
-  );
-}
-
-export function ImpactReport({
-  impact,
-  units,
-}: {
-  impact: Impact;
-  units: Unit[];
-}) {
-  return (
-    <section className="impact-report" aria-label="Impact preview">
-      <h3>Impact preview</h3>
-      {impact.blockers.map((blocker) => (
-        <p className="notice" key={blocker}>
-          {{
-            child_units: "This unit contains child units.",
-            direct_assignments:
-              "Revoke direct assignments before deleting this unit.",
-            connections: "This unit contains connections.",
-          }[blocker] ?? blocker}
-        </p>
-      ))}
-      <p className="muted">
-        {impact.changes.length} user/resource access changes ·{" "}
-        {impact.connections.length} connections
-      </p>
-      {impact.changes.length > 0 ? (
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>User / resource</th>
-                <th>Gained</th>
-                <th>Lost</th>
-              </tr>
-            </thead>
-            <tbody>
-              {impact.changes.map((change) => (
-                <tr
-                  key={`${change.user_id}:${change.resource.type}:${change.resource.id}`}
-                >
-                  <td>
-                    <code title={change.user_id}>{change.user_id}</code>
-                    <span className="row-description">
-                      {units.find((u) => u.id === change.resource.id)?.name ??
-                        change.resource.id}
-                    </span>
-                  </td>
-                  <td>{change.gained.join(", ") || "—"}</td>
-                  <td>{change.lost.join(", ") || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p>No effective permissions change.</p>
-      )}
-    </section>
   );
 }

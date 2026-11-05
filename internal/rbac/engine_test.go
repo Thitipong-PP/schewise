@@ -25,6 +25,15 @@ type memoryReader struct {
 	failure     error
 }
 
+func (r *memoryReader) ActiveRootAdministrators(context.Context) (int, error) {
+	count := 0
+	for _, a := range r.assignments {
+		if a.RoleID == uuid.MustParse(rbac.AdministratorRoleID) && a.Scope == rbac.RootScope() && r.users[a.UserID] {
+			count++
+		}
+	}
+	return count, r.failure
+}
 func (r *memoryReader) ActiveUser(_ context.Context, user uuid.UUID) (bool, error) {
 	return r.users[user], nil
 }
@@ -87,12 +96,12 @@ func memoryFixture() *memoryReader {
 		r.users[id(name)] = true
 	}
 	root := rbac.RootScope().ID
-	r.units[root] = rbac.Unit{ID: root, Name: "Organization", Ancestors: []uuid.UUID{}}
+	r.units[root] = rbac.Unit{InheritAccess: true, ID: root, Name: "Organization", Ancestors: []uuid.UUID{}}
 	for _, name := range []string{"Engineering", "Data"} {
-		r.units[id(name)] = rbac.Unit{ID: id(name), ParentID: root, Name: name, Ancestors: []uuid.UUID{root}}
+		r.units[id(name)] = rbac.Unit{InheritAccess: true, ID: id(name), ParentID: root, Name: name, Ancestors: []uuid.UUID{root}}
 	}
 	for _, name := range []string{"Payments", "Mobile"} {
-		r.units[id(name)] = rbac.Unit{ID: id(name), ParentID: id("Engineering"), Name: name, Ancestors: []uuid.UUID{root, id("Engineering")}}
+		r.units[id(name)] = rbac.Unit{InheritAccess: true, ID: id(name), ParentID: id("Engineering"), Name: name, Ancestors: []uuid.UUID{root, id("Engineering")}}
 	}
 	for _, name := range []string{"Payments", "Mobile", "Data"} {
 		r.connections[id(name+"DB")] = id(name)

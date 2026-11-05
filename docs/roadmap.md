@@ -27,6 +27,8 @@ The roadmap can evolve as use cases are clarified.
 - [x] Step 2B: permission-gated unit/role/assignment APIs and administration UI,
       inherited-source privacy, access explanations, filtered audit log, and
       generated frontend/backend contracts.
+- [x] Unit inheritance boundaries, blocked-source explanations, centralized
+      revocation rules, and searchable member/user pickers.
 - [ ] Invitations, MFA, verification, and recovery.
 
 ## Phase 1: connections and schema understanding

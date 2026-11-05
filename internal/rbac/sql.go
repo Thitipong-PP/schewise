@@ -66,7 +66,7 @@ func scanUnit(row scanner) (Unit, error) {
 	var unit Unit
 	var parent sql.NullString
 	var ancestors []byte
-	err := row.Scan(&unit.ID, &parent, &unit.Name, &unit.Description, &unit.Kind, &ancestors, &unit.CreatedAt)
+	err := row.Scan(&unit.ID, &parent, &unit.Name, &unit.Description, &unit.Kind, &ancestors, &unit.CreatedAt, &unit.InheritAccess)
 	if err != nil {
 		return unit, storeError(err)
 	}
@@ -80,7 +80,7 @@ func scanUnit(row scanner) (Unit, error) {
 	return unit, err
 }
 
-const unitColumns = `id,parent_id,name,description,kind,to_json(ancestors),created_at`
+const unitColumns = `id,parent_id,name,description,kind,to_json(ancestors),created_at,inherit_access`
 
 func (r *SQLReader) Unit(ctx context.Context, id uuid.UUID) (Unit, error) {
 	return scanUnit(r.db.QueryRowContext(ctx, `SELECT `+unitColumns+` FROM units WHERE id=$1`, id))
@@ -170,15 +170,21 @@ func storeError(err error) error {
 func (r *SQLReader) snapshot(ctx context.Context, fn func(Reader) error) error {
 	db, ok := r.db.(*sql.DB)
 	if !ok {
-		return fn(r)
+		return fn(cacheReader(r))
 	}
 	tx, err := db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelRepeatableRead, ReadOnly: true})
 	if err != nil {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := fn(NewSQLReader(tx, r.connections)); err != nil {
+	if err := fn(cacheReader(NewSQLReader(tx, r.connections))); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func (r *SQLReader) ActiveRootAdministrators(ctx context.Context) (int, error) {
+	var count int
+	err := r.db.QueryRowContext(ctx, `SELECT count(*) FROM assignments a JOIN users u ON u.id=a.user_id WHERE a.role_id=$1 AND a.scope_type='unit' AND a.scope_id=$2 AND u.is_active`, uuid.MustParse(AdministratorRoleID), RootScope().ID).Scan(&count)
+	return count, err
 }

@@ -55,25 +55,12 @@ func (r *Repository) Revoke(ctx context.Context, actor, id uuid.UUID) error {
 		if err != nil {
 			return nil, err
 		}
-		allowed, err := e.CanAssign(ctx, actor, assignment.RoleID, assignment.Scope)
+		allowed, err := e.CanRevoke(ctx, actor, assignment)
 		if err != nil {
 			return nil, err
 		}
 		if !allowed {
 			return nil, ErrForbidden
-		}
-		active, err := e.reader.ActiveUser(ctx, assignment.UserID)
-		if err != nil {
-			return nil, err
-		}
-		if active && assignment.RoleID == uuid.MustParse(AdministratorRoleID) && assignment.Scope == RootScope() {
-			count, err := remainingAdministrators(ctx, tx, id, uuid.Nil)
-			if err != nil {
-				return nil, err
-			}
-			if count == 0 {
-				return nil, ErrLastAdministrator
-			}
 		}
 		_, err = tx.ExecContext(ctx, `DELETE FROM assignments WHERE id=$1`, id)
 		return map[string]any{"assignment": assignment}, err

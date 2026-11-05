@@ -56,6 +56,7 @@ var (
 	ErrLastAdministrator = errors.New("last active root Administrator must be preserved")
 	ErrNotEmpty          = errors.New("resource is not empty")
 	ErrCycle             = errors.New("unit move would create a cycle")
+	ErrSelfLockout       = errors.New("inheritance change would remove your membership-management permission")
 	ErrDepth             = errors.New("unit tree exceeds maximum depth")
 )
 
@@ -75,13 +76,14 @@ func RootScope() Scope             { return Scope{Type: ScopeUnit, ID: uuid.Must
 func UnitScope(id uuid.UUID) Scope { return Scope{Type: ScopeUnit, ID: id} }
 
 type Unit struct {
-	ID          uuid.UUID   `json:"id"`
-	ParentID    uuid.UUID   `json:"parent_id"`
-	Name        string      `json:"name"`
-	Description string      `json:"description"`
-	Kind        string      `json:"kind"`
-	Ancestors   []uuid.UUID `json:"ancestors"`
-	CreatedAt   time.Time   `json:"created_at"`
+	InheritAccess bool        `json:"inherit_access"`
+	ID            uuid.UUID   `json:"id"`
+	ParentID      uuid.UUID   `json:"parent_id"`
+	Name          string      `json:"name"`
+	Description   string      `json:"description"`
+	Kind          string      `json:"kind"`
+	Ancestors     []uuid.UUID `json:"ancestors"`
+	CreatedAt     time.Time   `json:"created_at"`
 }
 
 type Role struct {
@@ -115,15 +117,22 @@ type Grant struct {
 	Inherited    bool      `json:"inherited"`
 }
 
+type BlockedGrant struct {
+	Grant
+	BlockedBy uuid.UUID `json:"blocked_by"`
+}
+
 type Explanation struct {
-	Allowed bool    `json:"allowed"`
-	Grants  []Grant `json:"grants"`
-	Reason  string  `json:"reason"`
+	Blocked []BlockedGrant `json:"blocked"`
+	Allowed bool           `json:"allowed"`
+	Grants  []Grant        `json:"grants"`
+	Reason  string         `json:"reason"`
 }
 
 // Reader supplies trusted persisted identities, hierarchy, roles, and grants.
 // Resources from callers contain only identifiers, never trusted ancestor paths.
 type Reader interface {
+	ActiveRootAdministrators(context.Context) (int, error)
 	ActiveUser(context.Context, uuid.UUID) (bool, error)
 	Unit(context.Context, uuid.UUID) (Unit, error)
 	Role(context.Context, uuid.UUID) (Role, error)

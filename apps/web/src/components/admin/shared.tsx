@@ -2,10 +2,19 @@
 "use client";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
-import { AlertCircle, LoaderCircle, RefreshCw, X } from "lucide-react";
+import {
+  AlertCircle,
+  ChevronDown,
+  LoaderCircle,
+  RefreshCw,
+  X,
+} from "lucide-react";
 import { message } from "@/lib/admin-api";
 
-export function useQuery<T>(load: (signal: AbortSignal) => Promise<T>) {
+export function useQuery<T>(
+  load: (signal: AbortSignal) => Promise<T>,
+  keepPrevious = false,
+) {
   const [state, setState] = useState<{
     data?: T;
     error?: string;
@@ -29,11 +38,20 @@ export function useQuery<T>(load: (signal: AbortSignal) => Promise<T>) {
   const reload = useCallback(() => setRevision((value) => value + 1), []);
   const current = state.loader === load && state.revision === revision;
   return {
-    data: current ? state.data : undefined,
+    data: current || keepPrevious ? state.data : undefined,
     error: current ? state.error : undefined,
     loading: !current,
     reload,
   };
+}
+
+export function Select(props: React.ComponentProps<"select">) {
+  return (
+    <span className="select-control">
+      <select {...props} />
+      <ChevronDown size={16} aria-hidden="true" />
+    </span>
+  );
 }
 
 export function Feedback({ error }: { error?: string }) {

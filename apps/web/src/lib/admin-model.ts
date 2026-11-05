@@ -56,3 +56,11 @@ export function moveDestinations(units: Unit[], moving: Unit): Unit[] {
       u.permissions.includes("unit:manage"),
   );
 }
+
+export function blockingLabel(
+  block: components["schemas"]["BlockView"],
+): string {
+  if (block.source === "blocked_hidden")
+    return "Access from above is blocked by an inheritance boundary you do not have access to.";
+  return block.reason_text;
+}

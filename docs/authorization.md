@@ -43,13 +43,17 @@ Resources contain only a scope type and UUID, never a caller-supplied parent
 path. The engine resolves the owning unit and its ancestors from trusted
 metadata. A unit assignment grants permissions at that unit and below it;
 connection assignments apply only to that connection. Nothing flows upward or
-sideways. Multiple matching assignments combine by union, so adding a narrower
-Viewer cannot remove an inherited Developer grant. No matching grant means deny.
-Unknown permissions, missing/inactive users, invalid resources, cancellation,
-and store/resolver failures never grant access. Errors remain distinct from
-ordinary denials for callers to handle. SQL-backed decisions read identity,
-ancestry, and grants from one consistent snapshot so a concurrent move and
-assignment edit cannot produce permissions that never coexisted.
+sideways. Walk upward from the resource's owner, include assignments at each
+unit, and stop after the first `inherit_access=false` unit. Include a direct
+connection assignment too. A built-in root Administrator assignment always
+applies, even across boundaries; a custom all-permission clone does not bypass.
+Multiple applicable assignments combine by union, so a narrower Viewer cannot
+remove a Developer grant within the remaining chain. No matching grant means
+deny. Unknown permissions, missing/inactive users, invalid resources,
+cancellation, and store/resolver failures never grant access. Errors remain
+distinct from ordinary denials for callers to handle. SQL-backed decisions read
+identity, ancestry, and grants from one consistent snapshot so a concurrent move
+and assignment edit cannot produce permissions that never coexisted.
 
 `Explain` uses the same evaluation and returns every granting assignment's ID,
 role ID/name, scope, and inheritance marker, or an explicit denial reason with
@@ -58,12 +62,16 @@ from assignments at the root. A role containing any such permission can only be
 assigned at that root.
 
 `CanAssign` requires `unit:manage_members` at the target scope and every
-permission in the proposed role at that scope. Revocation uses the same rule.
-Managers can delegate Developer or Viewer inside their subtree, but cannot
-change assignments at an ancestor or grant Administrator. Developers cannot
-delegate. Role editing requires root `role:manage` and all proposed permissions
-at root, preventing an editor from escalating an already assigned role. Adding
-system-level permissions to a role already assigned below root is rejected.
+permission in the proposed role at that scope. `CanRevoke` adds the
+own-unit-subtree restriction and protection for the last active root
+Administrator. Users meeting the same management/permission checks may revoke
+their own assignments; Developers cannot. The store, HTTP revoke path, and
+read-only UI projections use this single gate. Managers can delegate Developer
+or Viewer inside their subtree, but cannot change assignments at an ancestor or
+grant Administrator. Developers cannot delegate. Role editing requires root
+`role:manage` and all proposed permissions at root, preventing an editor from
+escalating an already assigned role. Adding system-level permissions to a role
+already assigned below root is rejected.
 
 ## Repositories and invariants
 
@@ -88,6 +96,32 @@ any resulting depth above six, then rebuild the entire subtree's ancestor paths.
 Delete is non-cascading: a unit must have no child units, direct assignments, or
 owned connections. Inherited access alone does not make a unit nonempty. Root
 move/delete is always forbidden.
+
+## Inheritance boundaries
+
+`SetInheritAccess` requires `unit:manage_members` at the unit. The root rejects
+all changes and a database constraint keeps its flag true. Other units default
+to true. A change is rejected if the actor would lose membership-management
+permission at that unit, unless they hold a built-in root Administrator
+assignment. Writes recheck under the existing shared lock and commit their
+`unit.set_inherit_access` audit record atomically. Moves retain the flag.
+
+`DryRunInheritAccess` covers the unit subtree and owned connections using the
+same projected-reader mechanism as move previews. Reports include user email,
+before/after roles and permissions, gained/lost permissions, connections, and
+self-lockout blockers. Previews do not mutate units or audit history. A blocked
+inheritance proposal still explains its potential impact; blocked deletion
+continues to have no executable changes.
+
+`Explain` reports matching assignments that were cut off, the blocking unit, and
+`blocked_by_inherit_access` when that explains denial. Direct grants and root
+Administrator bypasses can still allow the permission while other grants are
+blocked. Membership/access lists include applicable assignments only. Tree/list
+visibility uses the same updated `Can` rules.
+
+Migration `00003_unit_inherit_access.sql` adds only the flag and root
+constraint, leaving existing units inheriting and all prior rows intact. Its
+downgrade is refused because dropping boundaries would silently broaden access.
 
 ## Connection ownership extension
 
@@ -137,10 +171,11 @@ upgrade the developer's application schema implicitly.
 
 All administration routes require a live session. Mutations also require the
 existing exact HTTPS Origin and synchronizer CSRF token. Every endpoint uses
-`Can` or `CanAssign`, directly or through authorized read projections; the UI
-never authorizes by role name. Unit operations first check `unit:read`, so
-unreadable and nonexistent units return the same 403 error envelope. Responses
-use `{ "error": "Readable reason", "code": "stable_code" }` for failures.
+`Can`, `CanAssign`, or `CanRevoke`, directly or through authorized read
+projections; the UI never authorizes by role name. Unit operations first check
+`unit:read`, so unreadable and nonexistent units return the same 403 error
+envelope. Responses use `{ "error": "Readable reason", "code": "stable_code" }`
+for failures.
 
 | Area               | Routes beneath `/api/v1`                                                | Authorization                                                                                           |
 | ------------------ | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
@@ -155,9 +190,15 @@ use `{ "error": "Readable reason", "code": "stable_code" }` for failures.
 | Membership         | `GET /units/{id}/members`, `/assignments`, `/access`                    | `unit:read`; assignments are direct only; access excludes inactive/no-access users                      |
 | User directory     | `GET /users?unit_id=&q=`                                                | Root `user:manage` or read/manage-members at supplied unit; active IDs/emails only, at most 200 matches |
 | User access        | `GET /users/{id}/assignments`, `/access`                                | Self, root `user:manage`, or manageable readable units; filtered to inspectable units                   |
-| Assignment edits   | `POST /assignments`, `DELETE /assignments/{id}`                         | Readable origin plus `CanAssign`; optional note on create                                               |
+| Assignment edits   | `POST /assignments`, `DELETE /assignments/{id}`                         | Readable origin plus `CanAssign` for grants / `CanRevoke` for revocations; optional note on create      |
 | Explain            | `POST /access/explain`                                                  | Read target unit plus self, root `user:manage`, or unit manage-members                                  |
 | Audit              | `GET /audit`                                                            | Root `audit:read`; actor/action/from/to filters and stable keyset pagination                            |
+
+`PATCH /units/{id}/inherit-access` calls `SetInheritAccess` with a required,
+non-null `inherit_access` boolean. `POST /units/{id}/dry-run/inherit-access`
+returns the impact before confirmation. Both require a readable unit and
+`unit:manage_members`. The revoke route calls `CanRevoke` through the authorized
+assignment lookup and again under the store's write lock.
 
 Connection resources are deliberately unavailable through these new endpoints
 until a real ownership adapter is implemented. The OpenAPI document specifies
@@ -181,10 +222,14 @@ read Payments but cannot read Engineering sees Bob's Engineering grant as
 unit name/ID, scope, assignment ID, note, and timestamp are omitted. The UI says
 "Inherited from a higher-level unit you don't have access to" and provides no
 revoke action. An Administrator with origin read access sees the full source.
-Explain uses the same projection. A readable origin outside the caller's
-delegation authority includes a read-only explanation. Visible forests also omit
-inaccessible parent IDs. Audit contents require the independent global
-`audit:read` permission and are not a scoped membership projection.
+Explain uses the same projection. A blocking unit that the requester cannot read
+is `source: "blocked_hidden"`, with no unit name/ID; its assignment is limited
+to the role and granted permissions. A readable blocker is `blocked` with its
+unit name/ID. These decisions are independent for each assignment and blocker. A
+readable origin outside the caller's delegation authority includes a read-only
+explanation. Visible forests also omit inaccessible parent IDs. Audit contents
+require the independent global `audit:read` permission and are not a scoped
+membership projection.
 
 ### Generated contracts and verification
 
@@ -203,5 +248,5 @@ forest ordering, move choices, and client failure/CSRF request behavior.
 ## Deferred capabilities
 
 Invitations, account settings, and deactivation APIs/UI remain deferred. Groups,
-permission expiry, deny rules, composite roles, inheritance flags, and
-schema/table/column-level permissions are deliberately absent.
+permission expiry, deny rules, composite roles, and schema/table/column-level
+permissions are deliberately absent.

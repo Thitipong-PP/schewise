@@ -66,8 +66,12 @@ Units form an organization tree with one permanent root and a maximum depth of
 six. Users receive roles through unit or connection assignments; an assignment
 at a unit applies to its descendants. Effective permissions are the union of
 matching assignments, and access is denied when none grant the requested
-permission. Narrower assignments add access and cannot subtract inherited
-rights.
+permission. Units default to `inherit_access=true`. A unit with inheritance
+disabled includes its own assignments but stops grants from higher units,
+including for descendants and owned connections. A built-in Administrator
+assignment at root always bypasses this boundary; custom clones do not. The
+root's flag is permanently true, and moving a unit preserves its flag. Narrower
+assignments add permissions within the resulting inheritance chain.
 
 Four immutable system roles are seeded: Administrator, Manager, Developer, and
 Viewer. Custom roles and cloning are available through the Roles page and API.
@@ -82,7 +86,19 @@ impact review in the confirmation dialog. Access explorer explains a user's
 permission at a unit; Audit log supports actor/action/time filters. Controls
 follow server-evaluated permissions and the Go API rechecks every operation.
 Unreadable inherited origins are hidden individually, and assignments outside
-your delegation authority are read-only.
+your delegation authority are read-only. The parent-access toggle requires
+`unit:manage_members` and an impact confirmation. A change that would remove the
+actor's membership-management permission is rejected; root Administrators retain
+their bypass. The impact includes before/after roles and permissions, affected
+users, and connections.
+
+Revocation uses `CanRevoke`: the assignment scope must lie within the actor's
+own unit subtree, the actor needs `unit:manage_members` there, and must hold
+every permission in the assigned role. Meeting these checks permits
+self-revocation, except for the last active root Administrator. Developers
+cannot revoke assignments. An ancestor grant cannot be revoked from a child; use
+an inheritance boundary to stop its effect instead. Hidden inherited sources and
+blocking units never expose their names/IDs in members or Explain.
 
 To bootstrap the first administrator, set `SCHEWISE_ADMIN_EMAIL` and
 `SCHEWISE_ADMIN_PASSWORD` before the first API startup (`make init` generates

@@ -314,6 +314,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/units/{id}/dry-run/inherit-access": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Preview inheritance changes, roles, and affected connections */
+    post: operations["previewInheritance"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/units/{id}/dry-run/move": {
     parameters: {
       query?: never;
@@ -329,6 +346,23 @@ export interface paths {
     options?: never;
     head?: never;
     patch?: never;
+    trace?: never;
+  };
+  "/api/v1/units/{id}/inherit-access": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    /** Set an inheritance boundary, protecting against self-lockout */
+    patch: operations["setInheritance"];
     trace?: never;
   };
   "/api/v1/units/{id}/members": {
@@ -421,6 +455,40 @@ export type webhooks = Record<string, never>;
 export interface components {
   schemas: {
     AccessChange: {
+      after_permissions: (
+        | "user:manage"
+        | "role:manage"
+        | "audit:read"
+        | "unit:read"
+        | "unit:manage"
+        | "unit:manage_members"
+        | "connection:read"
+        | "connection:manage"
+        | "schema:read"
+        | "docs:edit"
+        | "tag:manage"
+        | "ai:run"
+        | "data:preview"
+        | "data:query"
+      )[];
+      after_roles: components["schemas"]["RoleRef"][];
+      before_permissions: (
+        | "user:manage"
+        | "role:manage"
+        | "audit:read"
+        | "unit:read"
+        | "unit:manage"
+        | "unit:manage_members"
+        | "connection:read"
+        | "connection:manage"
+        | "schema:read"
+        | "docs:edit"
+        | "tag:manage"
+        | "ai:run"
+        | "data:preview"
+        | "data:query"
+      )[];
+      before_roles: components["schemas"]["RoleRef"][];
       gained: (
         | "user:manage"
         | "role:manage"
@@ -454,6 +522,7 @@ export interface components {
         | "data:query"
       )[];
       resource: components["schemas"]["Scope"];
+      user_email: string;
       /** Format: uuid */
       user_id: string;
     };
@@ -543,6 +612,12 @@ export interface components {
       entries: components["schemas"]["Audit"][];
       has_more: boolean;
     };
+    BlockView: {
+      assignment: components["schemas"]["AssignmentView"];
+      reason_text: string;
+      source: string;
+      unit?: components["schemas"]["UnitRef"];
+    };
     CSRFResponse: {
       csrf_token: string;
     };
@@ -593,6 +668,7 @@ export interface components {
     };
     ExplanationView: {
       allowed: boolean;
+      blocked: components["schemas"]["BlockView"][];
       grants: components["schemas"]["AssignmentView"][];
       reason: string;
       reason_text: string;
@@ -605,6 +681,9 @@ export interface components {
       changes: components["schemas"]["AccessChange"][];
       connections: components["schemas"]["Connection"][];
       executable: boolean;
+    };
+    InheritRequest: {
+      inherit_access: boolean | null;
     };
     Member: {
       assignments: components["schemas"]["AssignmentView"][];
@@ -789,6 +868,7 @@ export interface components {
       description: string;
       /** Format: uuid */
       id: string;
+      inherit_access: boolean;
       is_root: boolean;
       kind: string;
       name: string;
@@ -3045,6 +3125,106 @@ export interface operations {
       };
     };
   };
+  previewInheritance: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InheritRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Impact"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
   previewMove: {
     parameters: {
       query?: never;
@@ -3070,6 +3250,104 @@ export interface operations {
         content: {
           "application/json": components["schemas"]["Impact"];
         };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  setInheritance: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["InheritRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
       };
       /** @description Request rejected; unreadable and missing units both return 403 */
       400: {

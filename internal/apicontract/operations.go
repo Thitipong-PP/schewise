@@ -32,6 +32,8 @@ func Operations() []Operation {
 		{ID: "deleteUnit", Method: "DELETE", Path: "/api/v1/units/{id}", Summary: "Delete an empty non-root unit", Status: 204},
 		{ID: "previewMove", Method: "POST", Path: "/api/v1/units/{id}/dry-run/move", Summary: "Preview permission changes before moving a unit", Request: MoveRequest{}, Response: rbac.Impact{}, Status: 200},
 		{ID: "previewDelete", Method: "POST", Path: "/api/v1/units/{id}/dry-run/delete", Summary: "Preview delete blockers and access changes", Request: EmptyRequest{}, Response: rbac.Impact{}, Status: 200},
+		{ID: "setInheritance", Method: "PATCH", Path: "/api/v1/units/{id}/inherit-access", Summary: "Set an inheritance boundary, protecting against self-lockout", Request: InheritRequest{}, Status: 204},
+		{ID: "previewInheritance", Method: "POST", Path: "/api/v1/units/{id}/dry-run/inherit-access", Summary: "Preview inheritance changes, roles, and affected connections", Request: InheritRequest{}, Response: rbac.Impact{}, Status: 200},
 		{ID: "roles", Method: "GET", Path: "/api/v1/roles", Summary: "List roles, permissions, and assignment/user counts", Response: RolesResponse{}, Status: 200},
 		{ID: "createRole", Method: "POST", Path: "/api/v1/roles", Summary: "Create a custom role", Request: RoleRequest{}, Response: RoleResponse{}, Status: 201},
 		{ID: "updateRole", Method: "PATCH", Path: "/api/v1/roles/{id}", Summary: "Update a custom role without escalating privileges", Request: RoleRequest{}, Response: RoleResponse{}, Status: 200},

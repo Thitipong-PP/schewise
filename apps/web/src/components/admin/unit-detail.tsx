@@ -5,14 +5,29 @@ import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { ArrowLeft, UserPlus, UserMinus, Shield } from "lucide-react";
 import { api, csrfHeaders, message, result } from "@/lib/admin-api";
-import type { components } from "@/lib/api-types";
-import { sourceLabel, type Assignment, type Unit } from "@/lib/admin-model";
-import { Actions, Feedback, Modal, QueryState, useQuery } from "./shared";
+import {
+  sourceLabel,
+  type Assignment,
+  type Unit,
+  type UserInfo,
+} from "@/lib/admin-model";
+import { UserPicker } from "./user-picker";
+import {
+  Actions,
+  Feedback,
+  Modal,
+  QueryState,
+  Select,
+  useQuery,
+} from "./shared";
 
 export function Grant({ assignment }: { assignment: Assignment }) {
   return (
     <div className="grant">
-      <strong>{assignment.role.name}</strong>
+      <div className="name-with-badge">
+        <strong>{assignment.role.name}</strong>
+        {!assignment.can_revoke && <span className="badge">Read-only</span>}
+      </div>
       <span className="row-description">{sourceLabel(assignment)}</span>
       {assignment.source !== "inherited_hidden" &&
         assignment.source === "inherited" &&
@@ -202,32 +217,26 @@ function AssignDialog({
   close: () => void;
   saved: () => void;
 }) {
-  const [search, setSearch] = useState("");
   const query = useQuery(
     useCallback(
-      async (signal) => {
-        const [users, roles] = await Promise.all([
-          api.GET("/api/v1/users", {
-            params: { query: { unit_id: unit.id, q: search } },
-            signal,
-          }),
-          api.GET("/api/v1/units/{id}/assignable-roles", {
+      async (signal) =>
+        result(
+          await api.GET("/api/v1/units/{id}/assignable-roles", {
             params: { path: { id: unit.id } },
             signal,
           }),
-        ]);
-        return { users: result(users).users, roles: result(roles).roles };
-      },
-      [unit.id, search],
+        ).roles,
+      [unit.id],
     ),
   );
-  const [user, setUser] = useState("");
+  const [user, setUser] = useState<UserInfo | null>(null);
   const [role, setRole] = useState("");
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function submit(event: React.FormEvent) {
     event.preventDefault();
+    if (!user || busy) return;
     setBusy(true);
     setError("");
     try {
@@ -235,7 +244,7 @@ function AssignDialog({
         await api.POST("/api/v1/assignments", {
           params: { header: await csrfHeaders() },
           body: {
-            user_id: user,
+            user_id: user.id,
             role_id: role,
             scope: { type: "unit", id: unit.id },
             note,
@@ -252,41 +261,17 @@ function AssignDialog({
   return (
     <Modal title={`Assign a role at ${unit.name}`} close={close} busy={busy}>
       <form onSubmit={submit}>
-        <label className="field">
-          Find a member
-          <input
-            type="search"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setUser("");
-            }}
-            placeholder="Search by email"
-            disabled={busy}
-          />
-        </label>
+        <UserPicker
+          label="Member"
+          unitID={unit.id}
+          value={user}
+          onChange={setUser}
+          disabled={busy}
+        />
         <QueryState query={query} />
         <label className="field">
-          Member
-          <select
-            required
-            value={user}
-            onChange={(e) => setUser(e.target.value)}
-            disabled={busy || query.loading}
-          >
-            <option value="" disabled>
-              Select a member
-            </option>
-            {query.data?.users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.email}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
           Role
-          <select
+          <Select
             required
             value={role}
             onChange={(e) => setRole(e.target.value)}
@@ -295,14 +280,14 @@ function AssignDialog({
             <option value="" disabled>
               Select a role
             </option>
-            {query.data?.roles.map((r) => (
+            {query.data?.map((r) => (
               <option key={r.id} value={r.id}>
                 {r.name}
               </option>
             ))}
-          </select>
+          </Select>
         </label>
-        {query.data?.roles.length === 0 && (
+        {query.data?.length === 0 && (
           <p className="muted">
             No roles can be delegated with your current permissions.
           </p>
@@ -365,8 +350,12 @@ function RevokeDialog({
     <Modal title="Revoke role assignment" close={close} busy={busy}>
       <form onSubmit={submit}>
         <p>
-          Revoke <strong>{assignment.role.name}</strong> for{" "}
-          <strong>{email}</strong> at{" "}
+          Revoke{" "}
+          <div className="name-with-badge">
+            <strong>{assignment.role.name}</strong>
+            {!assignment.can_revoke && <span className="badge">Read-only</span>}
+          </div>{" "}
+          for <strong>{email}</strong> at{" "}
           <strong>{assignment.source_unit?.name}</strong>? Access inherited by
           descendant units will also change.
         </p>
@@ -381,5 +370,3 @@ function RevokeDialog({
     </Modal>
   );
 }
-
-export type Member = components["schemas"]["Member"];

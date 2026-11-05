@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   sourceLabel,
+  blockingLabel,
   hiddenSourceMessage,
   orderedUnits,
   moveDestinations,
@@ -23,6 +24,7 @@ const makeUnit = (
   depth: 1,
   is_root: !parent_id,
   can_move: !!parent_id,
+  inherit_access: true,
 });
 
 test("members and Explain always label hidden origins without reading supplied source metadata", () => {
@@ -119,5 +121,21 @@ test("API failures expose the server reason instead of treating a rejection as s
   assert.throws(
     () => result({ response: new Response(null, { status: 503 }) }),
     /could not be completed/,
+  );
+});
+
+test("hidden blocking units never enter readable Explain labels", () => {
+  const hidden = {
+    source: "blocked_hidden",
+    unit: { id: "private-id", name: "Payments" },
+    reason_text: "Blocked by Payments",
+  };
+  assert.equal(
+    blockingLabel(hidden),
+    "Access from above is blocked by an inheritance boundary you do not have access to.",
+  );
+  assert.equal(
+    blockingLabel({ ...hidden, source: "blocked" }),
+    "Blocked by Payments",
   );
 });
