@@ -15,9 +15,9 @@ flowchart LR
 ```
 
 The application database contains units, roles, flat permissions, assignments,
-users, sessions, audit records, and migration state. It is separate from any
-future target database that a user connects. Application migrations must never
-be applied to a target connection.
+users, invitations, sessions, audit records, and migration state. It is separate
+from any future target database that a user connects. Application migrations
+must never be applied to a target connection.
 
 ## Boundaries and choices
 
@@ -51,7 +51,7 @@ be applied to a target connection.
   redact inaccessible ancestors per assignment; Go alone determines capability
   flags. Inheritance boundaries stop ancestor grants while retaining built-in
   root Administrator bypasses. `CanRevoke` centralizes revoke authority. Public
-  registration remains disabled.
+  registration is bootstrap-only; all later accounts use invitations.
 - **API contracts:** `internal/apicontract` defines request/response DTOs and
   the administration route manifest used by Fiber registration and the OpenAPI
   3.1 generator. `openapi-typescript` generates frontend types; `openapi-fetch`
@@ -89,6 +89,24 @@ Transaction and DDL behavior must be evaluated per connector. Environment names
 such as staging are separate from a Git staging area.
 
 Target connectors, schema history, change execution, mock database endpoints,
-mapping/harmonization, AI assistance, and invitations remain future work. Record
-material designs as ADRs and extend the [roadmap](roadmap.md) without treating
-planned features as implemented.
+mapping/harmonization, AI assistance remain future work. Record material designs
+as ADRs and extend the [roadmap](roadmap.md) without treating planned features
+as implemented.
+
+## Invite-only onboarding
+
+`internal/auth` owns invitations alongside identity/session transactions.
+`internal/onetimetoken` supplies reusable random tokens, SHA-256 storage
+digests, and constant-time verification; token purpose, expiry, and consumption
+live in callers. Migration 00004 adds `invites` and `users.display_name`
+additively. Invite records preserve stale role/scope IDs so deleting a target
+does not destroy history or consume the link. Acceptance revalidates the current
+pair and issuer permissions under the shared metadata advisory lock, then
+creates user, assignment, session, used state, and audits atomically. A trigger
+enforces the one-active-email invariant with the same lock because expiry cannot
+appear in an immutable partial index.
+
+No SMTP is installed. An optional `auth.Mailer` runs after commit with a no-op
+default; a transport failure never rolls back a committed invitation or logs
+transport error details. A future durable delivery mechanism would need its own
+review. Account settings, reset, and 2FA are separate milestones.

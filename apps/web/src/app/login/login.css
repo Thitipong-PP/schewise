@@ -282,3 +282,13 @@
     animation: none;
   }
 }
+
+.invite-summary {
+  margin: -12px 0 24px;
+  color: var(--login-secondary);
+  overflow-wrap: anywhere;
+}
+.login-field input[readonly] {
+  color: var(--login-secondary);
+  background: #f1f1f1;
+}

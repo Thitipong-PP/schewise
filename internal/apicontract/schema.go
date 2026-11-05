@@ -103,7 +103,11 @@ func Document() map[string]any {
 		}
 		parameters := []any{}
 		for _, match := range pathParameter.FindAllStringSubmatch(op.Path, -1) {
-			parameters = append(parameters, map[string]any{"name": match[1], "in": "path", "required": true, "schema": map[string]any{"type": "string", "format": "uuid"}})
+			schema := map[string]any{"type": "string", "format": "uuid"}
+			if match[1] == "token" {
+				schema = map[string]any{"type": "string", "pattern": "^[A-Za-z0-9_-]{43}$"}
+			}
+			parameters = append(parameters, map[string]any{"name": match[1], "in": "path", "required": true, "schema": schema})
 		}
 		for _, q := range op.Query {
 			schema := map[string]any{"type": q.Type}

@@ -63,28 +63,28 @@ Paths below are relative to `/api/v1`. Responses are JSON.
 | GET / HEAD | `/health`                | Public process liveness, not database readiness                         |
 | GET        | `/auth/csrf`             | Returns CSRF token; creates a short-lived anonymous session when needed |
 | POST       | `/auth/login`            | Valid CSRF, exact Origin, email/password; rotates the session           |
-| POST       | `/auth/register`         | Root user:manage and authority to delegate Administrator, plus CSRF     |
+| POST       | `/auth/register`         | Empty installation only, plus CSRF; closes after first user             |
 | POST       | `/auth/logout`           | Valid session plus CSRF; revokes session and expires cookie             |
-| GET        | `/auth/me`               | Authenticated identity: UUID, email, and current role                   |
+| GET        | `/auth/me`               | Authenticated identity: UUID, email, display name, and role             |
 | DELETE     | `/users/{uuid}/sessions` | Root user:manage plus CSRF; revokes all sessions for that user          |
 
 Login and registration accept only `email` and `password`; unknown fields are
-rejected. Emails are trimmed/lowercased. Passwords require at least 12 Unicode
-characters and at most 256 UTF-8 bytes. Argon2id PHC hashes use 64 MiB memory, 3
-iterations, 2 lanes, a random 16-byte salt, and a 32-byte output. Unknown emails
-perform dummy password verification, and failed login responses are generic.
+rejected. Emails are trimmed/lowercased. New passwords require 12–128 Unicode
+characters (at most 512 UTF-8 bytes) and reject a small common-password list.
+Argon2id PHC hashes use 64 MiB memory, 3 iterations, 2 lanes, a random 16-byte
+salt, and a 32-byte output. Unknown emails perform dummy password verification,
+and failed login responses are generic.
 
 The four seeded system roles are **Administrator**, **Manager**, **Developer**,
 and **Viewer**. Role names are display metadata, never authorization checks.
 Permissions come from scoped assignments through the RBAC engine; see
 [authorization](authorization.md).
 
-Public registration is disabled. The existing account-creation endpoint still
-creates a root Administrator, so its caller needs root `user:manage` **and**
-`CanAssign(Administrator, root)`. Holding `user:manage` alone cannot elevate a
-new account. Per-user session revocation needs root `user:manage`.
-Role/unit/assignment management APIs and UI are deferred to Step 2B;
-invitations, MFA, verification, and recovery remain deferred too.
+Public registration closes after the first account. Subsequent accounts require
+invitations with root `user:manage` and `CanAssign` for the intended role/scope.
+Per-user session revocation requires root `user:manage`. Role/unit/assignment
+management and invitations have HTTP APIs and UI; account settings, MFA,
+verification, and recovery remain deferred.
 
 The existing identity response's `role` string is a display-only, sorted list of
 assigned role names for compatibility with the development page. It does not
@@ -160,3 +160,53 @@ Protect `.env`, back up the Postgres volume, and protect the Caddy private CA
 volume. Production deployment, certificate issuance, secret management, backups,
 MFA/recovery, audit retention, and monitoring require a separate deployment
 plan.
+
+## Step 3: private invitations
+
+After the first account, `/api/v1/auth/register` returns a generic 403 for all
+callers; administrators create invitations instead. Env bootstrap stays the
+normal installation path, before the API starts listening. No public sign-up,
+registration-enable flag, account settings, email sending, reset, or 2FA is
+implemented.
+
+`PUBLIC_BASE_URL` is an HTTPS origin without a path/query/credentials and must
+match `SCHEWISE_ORIGIN`. It defaults to the latter. `SCHEWISE_INVITE_TTL`
+defaults to `168h` and accepts `1m`–`720h`. The optional `auth.Mailer` has a
+no-op default. A one-time create/regenerate response is the only way to retrieve
+a link; tokens and links are never stored in audit records or application logs.
+Next.js incoming URL logging is disabled, and invite responses/pages use
+no-store, no-referrer, and noindex. Keep any additional reverse-proxy/access
+logging configured to redact invite paths; a bearer URL also remains in the
+recipient's browser history until they remove it. Do not add analytics to invite
+pages.
+
+Admin APIs require live root `Can(user:manage)`, and creation/regeneration also
+require `CanAssign` for the attached role/scope. Current metadata supports unit
+scopes; connection invitation scopes fail closed until a connection ownership
+adapter is installed. Root scopes serialize with a nullable `scope_id`; the API
+uses the existing explicit root unit UUID. Lists use keyset pagination (default
+50, maximum 200). Only unused and unrevoked invitations can be revoked or
+regenerated; an expired one may be replaced by either regeneration or a new
+invite. Regeneration revokes the old record and creates a fresh one atomically.
+
+Acceptance requires the existing Origin/CSRF flow. The public GET exposes only
+email, role name, scope name, and expiry for a usable invitation. Unknown,
+malformed, expired, used, revoked, deleted-target, or no-longer-delegable links
+return the same `invitation_unavailable` response. Public GET/accept routes
+share 20 attempts per IP per minute and 200 attempts globally per minute per API
+process, including invalid requests. Limiters use the direct peer IP; do not
+trust forwarded IP headers from arbitrary clients. Multiple replicas would
+require a shared limiter and reviewed trusted-proxy configuration.
+
+Creation/acceptance and metadata mutations share the RBAC advisory lock. The
+issuer must still be active, hold root `user:manage`, and pass `CanAssign` for
+the current role at acceptance. This prevents role edits or revoked issuer
+privileges from escalating an old invitation. Failed revalidation leaves the
+invite unused. User, display name, role assignment (created by the issuer), used
+state, rotated session and audits commit together, or none do. Replaying a used
+link fails. Email is taken exclusively from the invite, never the form.
+
+New password hashes use the existing Argon2id work factors with 12–128 Unicode
+characters (maximum 512 UTF-8 bytes), a small case-insensitive common-password
+denylist, and no composition rules. Existing hashes remain verifiable, including
+older accepted passwords; the stricter policy applies to new credentials.

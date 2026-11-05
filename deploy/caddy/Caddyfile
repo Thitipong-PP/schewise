@@ -8,7 +8,7 @@ https://localhost:8443 {
 	header {
 		X-Content-Type-Options nosniff
 		X-Frame-Options DENY
-		Referrer-Policy same-origin
+		Referrer-Policy no-referrer
 	}
 	@api path /api/*
 	handle @api {

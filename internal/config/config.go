@@ -17,6 +17,8 @@ type Config struct {
 	AdminEmail    string
 	AdminPassword string
 	SessionTTL    time.Duration
+	PublicBaseURL string
+	InviteTTL     time.Duration
 }
 
 func env(key, fallback string) string {
@@ -37,6 +39,17 @@ func Load() (Config, error) {
 		c.SessionTTL, err = time.ParseDuration(value)
 		if err != nil || c.SessionTTL < time.Minute || c.SessionTTL > 30*24*time.Hour {
 			return c, errors.New("SCHEWISE_SESSION_TTL must be between 1m and 720h")
+		}
+	}
+	c.PublicBaseURL = strings.TrimRight(env("PUBLIC_BASE_URL", c.Origin), "/")
+	if c.PublicBaseURL != c.Origin {
+		return c, errors.New("PUBLIC_BASE_URL must match SCHEWISE_ORIGIN (the browser-facing HTTPS origin)")
+	}
+	c.InviteTTL = 7 * 24 * time.Hour
+	if value := os.Getenv("SCHEWISE_INVITE_TTL"); value != "" {
+		c.InviteTTL, err = time.ParseDuration(value)
+		if err != nil || c.InviteTTL < time.Minute || c.InviteTTL > 30*24*time.Hour {
+			return c, errors.New("SCHEWISE_INVITE_TTL must be between 1m and 720h")
 		}
 	}
 	c.DatabaseURL = os.Getenv("SCHEWISE_DATABASE_URL")

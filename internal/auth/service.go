@@ -3,36 +3,35 @@ package auth
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"crypto/subtle"
 	"database/sql"
-	"encoding/base64"
 	"errors"
 	"net/mail"
 	"strings"
 	"time"
 
+	"github.com/Thitipong-PP/schewise/internal/onetimetoken"
 	"github.com/Thitipong-PP/schewise/internal/rbac"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5/pgconn"
 	"go.uber.org/zap"
 )
 
 var (
-	ErrUnauthorized = errors.New("authentication required")
-	ErrCredentials  = errors.New("invalid email or password")
-	ErrForbidden    = errors.New("required permission missing")
-	ErrInvalidInput = errors.New("invalid input")
-	ErrConflict     = errors.New("account already exists")
-	ErrNotFound     = errors.New("user not found")
-	ErrBusy         = errors.New("authentication capacity exceeded")
+	ErrUnauthorized       = errors.New("authentication required")
+	ErrCredentials        = errors.New("invalid email or password")
+	ErrForbidden          = errors.New("required permission missing")
+	ErrInvalidInput       = errors.New("invalid input")
+	ErrConflict           = errors.New("account already exists")
+	ErrNotFound           = errors.New("user not found")
+	ErrRegistrationClosed = errors.New("registration unavailable")
+	ErrBusy               = errors.New("authentication capacity exceeded")
 )
 
 type User struct {
-	ID    string `json:"id"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	ID          string `json:"id"`
+	Email       string `json:"email"`
+	Role        string `json:"role"`
+	DisplayName string `json:"display_name"`
 }
 
 type Session struct {
@@ -57,15 +56,27 @@ type Service struct {
 	ttl       time.Duration
 	dummyHash string
 	hashSlots chan struct{}
+	invites   InviteConfig
 }
 
-func New(db *sql.DB, logger *zap.Logger, ttl time.Duration) (*Service, error) {
+func New(db *sql.DB, logger *zap.Logger, ttl time.Duration, options ...InviteConfig) (*Service, error) {
 	// Unknown accounts perform the same password work as known accounts.
 	dummy, err := HashPassword("Synthetic-dummy-password-42!")
 	if err != nil {
 		return nil, err
 	}
-	return &Service{db: db, logger: logger, ttl: ttl, dummyHash: dummy, hashSlots: make(chan struct{}, 4)}, nil
+	if logger == nil {
+		logger = zap.NewNop()
+	}
+	s := &Service{db: db, logger: logger, ttl: ttl, dummyHash: dummy, hashSlots: make(chan struct{}, 4)}
+	config := InviteConfig{}
+	if len(options) > 0 {
+		config = options[0]
+	}
+	if err := s.configureInvites(config); err != nil {
+		return nil, err
+	}
+	return s, nil
 }
 
 func normalizeEmail(email string) (string, error) {
@@ -77,33 +88,20 @@ func normalizeEmail(email string) (string, error) {
 	return email, nil
 }
 
-func RandomToken() (string, error) {
-	data := make([]byte, 32)
-	if _, err := rand.Read(data); err != nil {
-		return "", err
-	}
-	return base64.RawURLEncoding.EncodeToString(data), nil
-}
-
-func tokenHash(token string) []byte {
-	hash := sha256.Sum256([]byte(token))
-	return hash[:]
-}
-
-func validToken(token string) bool {
-	decoded, err := base64.RawURLEncoding.Strict().DecodeString(token)
-	return err == nil && len(decoded) == 32
-}
+func RandomToken() (string, error)  { return onetimetoken.Generate() }
+func tokenHash(token string) []byte { return onetimetoken.Hash(token) }
+func validToken(token string) bool  { return onetimetoken.Valid(token) }
 
 func (s *Service) Lookup(ctx context.Context, token string) (*Session, error) {
 	if !validToken(token) {
 		return nil, ErrUnauthorized
 	}
 	var userID, email, role sql.NullString
+	var displayName string
 	result := &Session{Token: token}
-	err := s.db.QueryRowContext(ctx, `SELECT s.csrf_token,s.expires_at,u.id,u.email,`+roleDisplay+`
+	err := s.db.QueryRowContext(ctx, `SELECT s.csrf_token,s.expires_at,u.id,u.email,COALESCE(u.display_name,''),`+roleDisplay+`
  FROM sessions s LEFT JOIN users u ON u.id=s.user_id
- WHERE s.token_hash=$1 AND s.expires_at>now() AND (s.user_id IS NULL OR u.is_active)`, tokenHash(token)).Scan(&result.CSRF, &result.ExpiresAt, &userID, &email, &role)
+ WHERE s.token_hash=$1 AND s.expires_at>now() AND (s.user_id IS NULL OR u.is_active)`, tokenHash(token)).Scan(&result.CSRF, &result.ExpiresAt, &userID, &email, &displayName, &role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUnauthorized
 	}
@@ -111,7 +109,7 @@ func (s *Service) Lookup(ctx context.Context, token string) (*Session, error) {
 		return nil, err
 	}
 	if userID.Valid {
-		result.User = &User{ID: userID.String, Email: email.String, Role: role.String}
+		result.User = &User{ID: userID.String, Email: email.String, Role: role.String, DisplayName: displayName}
 	}
 	return result, nil
 }
@@ -257,7 +255,7 @@ func (s *Service) Bootstrap(ctx context.Context, email, password string) (bool, 
 	}
 	email, err = normalizeEmail(email)
 	if err != nil || !ValidPassword(password) {
-		return false, errors.New("first installation requires a valid SCHEWISE_ADMIN_EMAIL and SCHEWISE_ADMIN_PASSWORD (12+ characters, at most 256 bytes)")
+		return false, errors.New("first installation requires a valid SCHEWISE_ADMIN_EMAIL and SCHEWISE_ADMIN_PASSWORD (12–128 characters, at most 512 bytes)")
 	}
 	hash, err := HashPassword(password)
 	if err != nil {
@@ -293,7 +291,7 @@ func (s *Service) Login(ctx context.Context, previous *Session, email, password 
 	email, normalizeErr := normalizeEmail(email)
 	var user User
 	var hash string
-	err := s.db.QueryRowContext(ctx, `SELECT u.id,u.email,`+roleDisplay+`,u.password_hash FROM users u WHERE u.email=$1 AND u.is_active`, email).Scan(&user.ID, &user.Email, &user.Role, &hash)
+	err := s.db.QueryRowContext(ctx, `SELECT u.id,u.email,u.display_name,`+roleDisplay+`,u.password_hash FROM users u WHERE u.email=$1 AND u.is_active`, email).Scan(&user.ID, &user.Email, &user.DisplayName, &user.Role, &hash)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return nil, err
 	}
@@ -372,11 +370,25 @@ func (s *Service) Login(ctx context.Context, previous *Session, email, password 
 	return result, nil
 }
 
-func (s *Service) Register(ctx context.Context, actor *User, email, password string, event Event) (*User, error) {
-	if err := authorizeManagement(ctx, s.db, actor, true); err != nil {
+// Register is exclusively the first-user bootstrap path. Existing installations
+// accept accounts only through invitations, regardless of the caller's role.
+func (s *Service) Register(ctx context.Context, _ *User, email, password string, event Event) (*User, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
 		return nil, err
 	}
-	email, err := normalizeEmail(email)
+	defer func() { _ = tx.Rollback() }()
+	if err := rbac.Lock(ctx, tx); err != nil {
+		return nil, err
+	}
+	var exists bool
+	if err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM users)`).Scan(&exists); err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, ErrRegistrationClosed
+	}
+	email, err = normalizeEmail(email)
 	if err != nil || !ValidPassword(password) {
 		return nil, ErrInvalidInput
 	}
@@ -388,33 +400,14 @@ func (s *Service) Register(ctx context.Context, actor *User, email, password str
 	if err != nil {
 		return nil, err
 	}
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = tx.Rollback() }()
-	if err := rbac.Lock(ctx, tx); err != nil {
-		return nil, err
-	}
-	if err := authorizeManagement(ctx, tx, actor, true); err != nil {
-		return nil, err
-	}
 	user := &User{Email: email, Role: "Administrator"}
-	err = tx.QueryRowContext(ctx, `INSERT INTO users(email,password_hash) VALUES($1,$2) RETURNING id`, email, hash).Scan(&user.ID)
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return nil, ErrConflict
-	}
-	if err != nil {
+	if err := tx.QueryRowContext(ctx, `INSERT INTO users(email,password_hash) VALUES($1,$2) RETURNING id`, email, hash).Scan(&user.ID); err != nil {
 		return nil, err
 	}
-	event.ActorID = actor.ID
-	event.TargetID = user.ID
-	if err := grantAdministrator(ctx, tx, user.ID, actor.ID); err != nil {
+	if err := grantAdministrator(ctx, tx, user.ID, user.ID); err != nil {
 		return nil, err
 	}
-	event.Action = "user.register"
-	event.Outcome = "success"
+	event.ActorID, event.TargetID, event.Action, event.Outcome = user.ID, user.ID, "user.register", "success"
 	if err := writeEvent(ctx, tx, event); err != nil {
 		return nil, err
 	}

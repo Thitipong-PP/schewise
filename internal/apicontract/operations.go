@@ -2,7 +2,10 @@
 
 package apicontract
 
-import "github.com/Thitipong-PP/schewise/internal/rbac"
+import (
+	"github.com/Thitipong-PP/schewise/internal/auth"
+	"github.com/Thitipong-PP/schewise/internal/rbac"
+)
 
 type Query struct {
 	Name        string
@@ -22,6 +25,12 @@ func Operations() []Operation {
 	return []Operation{
 		{ID: "csrf", Method: "GET", Path: "/api/v1/auth/csrf", Summary: "Initialize the existing synchronizer CSRF session", Response: CSRFResponse{}, Status: 200, Existing: true, Public: true},
 		{ID: "identity", Method: "GET", Path: "/api/v1/auth/me", Summary: "Read the authenticated identity", Response: IdentityResponse{}, Status: 200, Existing: true},
+		{ID: "createInvite", Method: "POST", Path: "/api/v1/invites", Summary: "Create an authorized invitation and return its link once", Request: auth.InviteInput{}, Response: auth.InviteLink{}, Status: 201},
+		{ID: "invites", Method: "GET", Path: "/api/v1/invites", Summary: "List invitations without tokens", Response: auth.InvitePage{}, Status: 200, Query: []Query{{"before", "uuid", "Previous page cursor"}, {"limit", "integer", "Page size 1–200, default 50"}}},
+		{ID: "revokeInvite", Method: "POST", Path: "/api/v1/invites/{id}/revoke", Summary: "Revoke an unused invitation", Request: EmptyRequest{}, Status: 204},
+		{ID: "regenerateInvite", Method: "POST", Path: "/api/v1/invites/{id}/regenerate", Summary: "Revoke and replace an unused invitation, returning the new link once", Request: EmptyRequest{}, Response: auth.InviteLink{}, Status: 201},
+		{ID: "inspectInvite", Method: "GET", Path: "/api/v1/invites/{token}", Summary: "Inspect a valid invitation; all unavailable tokens return the same error", Response: auth.InviteDisplay{}, Status: 200, Public: true},
+		{ID: "acceptInvite", Method: "POST", Path: "/api/v1/invites/{token}/accept", Summary: "Accept an invitation atomically and rotate into an authenticated session", Request: AcceptInviteRequest{}, Response: IdentityResponse{}, Status: 201, Public: true},
 		{ID: "context", Method: "GET", Path: "/api/v1/access/context", Summary: "Read the current user's server-evaluated capabilities", Response: rbac.AccessContext{}, Status: 200},
 		{ID: "units", Method: "GET", Path: "/api/v1/units", Summary: "List only readable units, omitting unreadable ancestors", Response: UnitsResponse{}, Status: 200},
 		{ID: "unitTree", Method: "GET", Path: "/api/v1/units/tree", Summary: "Read the visible organization forest", Response: TreeResponse{}, Status: 200},

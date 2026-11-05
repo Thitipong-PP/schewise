@@ -64,7 +64,7 @@ func NewApp(config Config) *fiber.App {
 	app.Use("/api/v1/auth", s.available)
 	app.Get("/api/v1/auth/csrf", s.rateLimit(60), s.csrf)
 	app.Post("/api/v1/auth/login", s.rateLimit(10), s.mutation, s.login)
-	app.Post("/api/v1/auth/register", s.rateLimit(20), s.mutation, s.authenticated, s.permission(rbac.UserManage), s.register)
+	app.Post("/api/v1/auth/register", s.rateLimit(20), s.mutation, s.register)
 	app.Post("/api/v1/auth/logout", s.mutation, s.logout)
 	app.Get("/api/v1/auth/me", s.authenticated, s.me)
 	app.Delete("/api/v1/users/:id/sessions", s.available, s.mutation, s.authenticated, s.permission(rbac.UserManage), s.revokeSessions)
@@ -217,6 +217,9 @@ func (s *server) failure(c fiber.Ctx, err error) error {
 	code := 503
 	message := "Service temporarily unavailable."
 	switch {
+	case errors.Is(err, auth.ErrRegistrationClosed):
+		code = 403
+		message = "Registration is unavailable. Use an invitation."
 	case errors.Is(err, auth.ErrCredentials):
 		code = 401
 		message = "Invalid email or password."
@@ -228,7 +231,7 @@ func (s *server) failure(c fiber.Ctx, err error) error {
 		message = "Required permission missing."
 	case errors.Is(err, auth.ErrInvalidInput):
 		code = 400
-		message = "Provide a valid email and a password of at least 12 characters and at most 256 bytes."
+		message = "Provide valid fields and an uncommon password of 12–128 characters (at most 512 bytes)."
 	case errors.Is(err, auth.ErrConflict):
 		code = 409
 		message = "An account with that email already exists."
@@ -264,7 +267,7 @@ func readCredentials(c fiber.Ctx) (credentials, error) {
 	if err := decoder.Decode(new(any)); err != io.EOF {
 		return input, auth.ErrInvalidInput
 	}
-	if len(input.Email) > 254 || len(input.Password) > 256 {
+	if len(input.Email) > 254 || len(input.Password) > 512 {
 		return input, auth.ErrInvalidInput
 	}
 	return input, nil
@@ -290,8 +293,7 @@ func (s *server) register(c fiber.Ctx) error {
 	if err != nil {
 		return s.deny(c, "user.register", "invalid_input", 400)
 	}
-	session, _ := s.session(c)
-	user, err := s.Auth.Register(c.Context(), session.User, input.Email, input.Password, event(c, "user.register", "attempt"))
+	user, err := s.Auth.Register(c.Context(), nil, input.Email, input.Password, event(c, "user.register", "attempt"))
 	if err != nil {
 		if auditErr := s.Auth.Audit(c.Context(), event(c, "user.register", "failure")); auditErr != nil {
 			return s.failure(c, auditErr)

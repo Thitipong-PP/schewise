@@ -41,3 +41,16 @@ func TestPasswordInputLimits(t *testing.T) {
 		}
 	}
 }
+
+func TestNewPasswordPolicy(t *testing.T) {
+	for _, password := range []string{"Password1234", "123456789012", strings.Repeat("a", 129), strings.Repeat("😀", 129)} {
+		if ValidPassword(password) {
+			t.Fatal("weak or oversized new password accepted")
+		}
+	}
+	for _, password := range []string{strings.Repeat("a", 12), strings.Repeat("a", 128), strings.Repeat("😀", 128), "a long phrase with spaces"} {
+		if !ValidPassword(password) {
+			t.Fatal("valid password rejected by composition/length rules")
+		}
+	}
+}

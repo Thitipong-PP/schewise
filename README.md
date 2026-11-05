@@ -7,9 +7,10 @@ schema mapping, and harmonization to database projects.
 
 **Current milestone:** a runnable Go/Fiber API, Next.js web app,
 PostgreSQL-backed authentication, scoped authorization and administration
-APIs/UI, local HTTPS, durable audit events, and contributor CI. Target database
-connections, schema versioning/rollback, mock database endpoints, harmonization,
-AI, and CD are not implemented yet. See the [roadmap](docs/roadmap.md).
+APIs/UI, invite-only onboarding, local HTTPS, durable audit events, and
+contributor CI. Target database connections, schema versioning/rollback, mock
+database endpoints, harmonization, AI, and CD are not implemented yet. See the
+[roadmap](docs/roadmap.md).
 
 ## Run locally
 
@@ -42,9 +43,9 @@ security add-trusted-cert -r trustRoot \
 This adds user-level CA trust using your login keychain, without admin-domain
 trust. See the [HTTPS and authentication guide](docs/authentication.md) for
 trust, removal, and other platforms. Do not bypass browser certificate warnings.
-Session cookies are always Secure, HttpOnly, and SameSite=Lax. Public
-registration is disabled; creating accounts requires root account-management
-permission and authority to delegate Administrator.
+Session cookies are always Secure, HttpOnly, and SameSite=Lax. After the first
+user, accounts can only be created by accepting an authorized invitation. Public
+registration is closed, including for administrators.
 
 ```sh
 curl --cacert .local/root.crt https://localhost:8443/api/v1/health
@@ -117,8 +118,48 @@ To add a custom role:
    at that scope. Roles containing system permissions can only be assigned at
    root.
 
-System roles are read-only. A custom role cannot be deleted while assigned.
-Public registration and invitations remain unavailable in the UI.
+System roles are read-only. A custom role cannot be deleted while assigned. New
+accounts use the Invites page; there is no public sign-up UI.
+
+## Invite teammates
+
+1. Bootstrap the first root Administrator with `SCHEWISE_ADMIN_EMAIL` and
+   `SCHEWISE_ADMIN_PASSWORD` on first startup. Existing accounts are preserved.
+2. Sign in and open **Invites → Create invite**. Root `user:manage` is required
+   for every invite operation; the issuer must also pass `CanAssign` for the
+   selected role and unit. Enter the teammate's email, scope, role, and optional
+   note. Existing users should receive assignments directly instead.
+3. Copy the link from the one-time dialog and share it privately. The link
+   cannot be retrieved later. Regenerate revokes it and creates a new link;
+   revoke disables it. Only one pending, unexpired invite per normalized email
+   is allowed. The list includes pending, used, expired, and revoked records.
+4. The invited person opens `/invite/<token>`, sees the fixed email, role and
+   unit, and supplies a display name and password. Acceptance creates the user,
+   assignment, authenticated session and audit entries in one transaction.
+
+Set `PUBLIC_BASE_URL` to the browser-facing HTTPS origin (for example
+`https://localhost:8443`), matching `SCHEWISE_ORIGIN`. It defaults to that
+origin when omitted. Links never use an incoming Host header. Set
+`SCHEWISE_INVITE_TTL=168h` for the default seven-day expiry; supported lifetimes
+are `1m` through `720h`. Container environments pass both settings to Go.
+
+Passwords must contain 12–128 Unicode characters, at most 512 UTF-8 bytes, and
+must not match the small built-in common-password denylist. There are no
+composition rules. Login keeps compatibility with previously stored hashes.
+
+`POST /api/v1/auth/register` is bootstrap-only on an empty installation, guarded
+by Origin and synchronizer CSRF. It creates the first root Administrator and
+closes immediately under the same lock as env bootstrap. Normal process startup
+already performs env bootstrap before listening; there is no public sign-up page
+or registration-enabling flag.
+
+Invite tokens contain 32 random bytes and only SHA-256 digests are stored.
+Unavailable tokens return one generic error. Role/scope and issuer authority are
+rechecked at acceptance; invalidated invites stay unused. Public token endpoints
+share per-IP and global per-process rate limits. No SMTP transport is installed:
+the optional `auth.Mailer` defaults to a no-op. Account settings, password
+reset, and 2FA remain deferred. See [authentication](docs/authentication.md) for
+limits.
 
 The API contract is generated from backend DTOs/routes in
 [OpenAPI](docs/openapi.json), with generated TypeScript types checked in CI.

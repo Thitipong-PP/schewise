@@ -3,7 +3,13 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect } from "react";
-import { GitBranch, Shield, ScanSearch, ScrollText } from "lucide-react";
+import {
+  GitBranch,
+  Shield,
+  ScanSearch,
+  ScrollText,
+  MailPlus,
+} from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { api } from "@/lib/admin-api";
 import type { Context } from "@/lib/admin-model";
@@ -35,6 +41,12 @@ export function AppShell({
     return () => api.eject(middleware);
   }, [router]);
   const links = [
+    {
+      href: "/invites",
+      label: "Invites",
+      icon: MailPlus,
+      visible: context?.root_permissions.includes("user:manage"),
+    },
     {
       href: "/",
       label: "Organization",

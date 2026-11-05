@@ -7,6 +7,8 @@ try {
     ".env",
     `# Local installation secrets. Never commit this file.
 SCHEWISE_ORIGIN=https://localhost:8443
+PUBLIC_BASE_URL=https://localhost:8443
+SCHEWISE_INVITE_TTL=168h
 SCHEWISE_ADMIN_EMAIL=admin@example.test
 SCHEWISE_ADMIN_PASSWORD=${randomBytes(24).toString("hex")}
 SCHEWISE_SESSION_TTL=24h

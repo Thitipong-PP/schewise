@@ -138,11 +138,14 @@ func (s *server) visibleID(c fiber.Ctx) (uuid.UUID, error) {
 }
 func (s *server) registerAdmin(app *fiber.App) {
 	handlers := map[string]fiber.Handler{
+		"createInvite": s.createInvite, "invites": s.invites, "revokeInvite": s.revokeInvite, "regenerateInvite": s.regenerateInvite, "inspectInvite": s.inspectInvite, "acceptInvite": s.acceptInvite,
 		"setInheritance": s.setInheritance, "previewInheritance": s.previewInheritance,
 		"context": s.accessContext, "units": s.units, "unitTree": s.unitTree, "createUnit": s.createUnit, "unit": s.unit, "updateUnit": s.updateUnit, "moveUnit": s.moveUnit, "deleteUnit": s.deleteUnit, "previewMove": s.previewMove, "previewDelete": s.previewDelete,
 		"roles": s.roles, "createRole": s.createRole, "updateRole": s.updateRole, "cloneRole": s.cloneRole, "deleteRole": s.deleteRole, "catalog": s.catalog, "assignableRoles": s.assignableRoles,
 		"members": s.members, "unitAssignments": s.unitAssignments, "unitAccess": s.unitAccess, "users": s.users, "userAssignments": s.userAssignments, "userAccess": s.userAccess, "assign": s.assign, "revoke": s.revoke, "explain": s.explain, "audit": s.audit,
 	}
+	inviteIP := s.rateLimit(20)
+	inviteGlobal := s.inviteGlobalLimit()
 	for _, op := range api.Operations() {
 		if op.Existing {
 			continue
@@ -157,7 +160,12 @@ func (s *server) registerAdmin(app *fiber.App) {
 				return fiber.ErrServiceUnavailable
 			}
 			return c.Next()
-		}, s.authenticated}
+		}}
+		if op.Public {
+			chain = append(chain, inviteIP, inviteGlobal)
+		} else {
+			chain = append(chain, s.authenticated)
+		}
 		if op.Method != "GET" {
 			chain = append(chain, s.mutation)
 		}
