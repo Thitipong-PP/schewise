@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Thitipong-PP/schewise/internal/auth"
+	"github.com/Thitipong-PP/schewise/internal/rbac"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
 	"github.com/gofiber/fiber/v3/middleware/recover"
@@ -61,10 +62,10 @@ func NewApp(config Config) *fiber.App {
 	app.Use("/api/v1/auth", s.available)
 	app.Get("/api/v1/auth/csrf", s.rateLimit(60), s.csrf)
 	app.Post("/api/v1/auth/login", s.rateLimit(10), s.mutation, s.login)
-	app.Post("/api/v1/auth/register", s.rateLimit(20), s.mutation, s.authenticated, s.administrator, s.register)
+	app.Post("/api/v1/auth/register", s.rateLimit(20), s.mutation, s.authenticated, s.permission(rbac.UserManage), s.register)
 	app.Post("/api/v1/auth/logout", s.mutation, s.logout)
 	app.Get("/api/v1/auth/me", s.authenticated, s.me)
-	app.Delete("/api/v1/users/:id/sessions", s.available, s.mutation, s.authenticated, s.administrator, s.revokeSessions)
+	app.Delete("/api/v1/users/:id/sessions", s.available, s.mutation, s.authenticated, s.permission(rbac.UserManage), s.revokeSessions)
 	return app
 }
 
@@ -187,12 +188,18 @@ func (s *server) authenticated(c fiber.Ctx) error {
 	return c.Next()
 }
 
-func (s *server) administrator(c fiber.Ctx) error {
-	session, _ := s.session(c)
-	if session.User.Role != "Administrator" {
-		return s.deny(c, "auth.authorization", "denied", 403)
+func (s *server) permission(permission rbac.Permission) fiber.Handler {
+	return func(c fiber.Ctx) error {
+		session, _ := s.session(c)
+		allowed, err := s.Auth.Can(c.Context(), session.User, permission, rbac.RootScope())
+		if err != nil {
+			return s.failure(c, err)
+		}
+		if !allowed {
+			return s.deny(c, "auth.authorization", "denied", 403)
+		}
+		return c.Next()
 	}
-	return c.Next()
 }
 
 func (s *server) deny(c fiber.Ctx, action, outcome string, status int) error {
@@ -215,7 +222,7 @@ func (s *server) failure(c fiber.Ctx, err error) error {
 		message = "Authentication required."
 	case errors.Is(err, auth.ErrForbidden):
 		code = 403
-		message = "Administrator permission required."
+		message = "Required permission missing."
 	case errors.Is(err, auth.ErrInvalidInput):
 		code = 400
 		message = "Provide a valid email and a password of at least 12 characters and at most 256 bytes."

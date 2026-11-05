@@ -123,12 +123,16 @@ docker compose up -d --wait db
 make integration-test
 ```
 
-Integration tests create a random `auth_test_*` schema, apply migrations there,
-and drop only that schema afterward. They do not clear application users,
-sessions, or audits. Alternatively supply an isolated PostgreSQL URL through
-`SCHEWISE_TEST_DATABASE_URL`; CI does this and runs the suite with the race
-detector. Tests cover rotation, CSRF, permissions, revocation, expiry, bootstrap
-idempotency, audit rollback, rate limits, cookie flags, and log redaction.
+Integration tests create random `auth_test_*` and `rbac_test_*` schemas, apply
+migrations there, and drop only that schema afterward. They do not clear
+application users, sessions, or audits. Alternatively supply an isolated
+PostgreSQL URL through `SCHEWISE_TEST_DATABASE_URL`; CI does this and runs the
+suite with the race detector. Tests cover rotation, CSRF, permissions,
+revocation, expiry, bootstrap idempotency, audit rollback, rate limits, cookie
+flags, and log redaction. RBAC coverage adds the Alice–Frank hierarchy fixture,
+permission union, scope isolation, delegation, immutable roles, legacy
+migration, concurrent last-admin protection, moves/deletes, and dry-run impact.
+Connection ownership uses a synthetic adapter; no target database is contacted.
 
 To test production builds locally, keep Postgres running and stop native API/web
 servers or `docker compose stop gateway web api` first:

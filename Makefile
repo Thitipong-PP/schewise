@@ -31,7 +31,7 @@ lint: ## Run Go vet and ESLint
 test: ## Run Go tests with the race detector
 	go test -race -count=1 ./...
 
-integration-test: ## Run authentication tests in isolated PostgreSQL schemas
+integration-test: ## Run auth and RBAC tests in isolated PostgreSQL schemas
 	SCHEWISE_INTEGRATION_TESTS=1 node scripts/with-env.mjs go test -race -count=1 ./...
 
 build: ## Build the API and production web app

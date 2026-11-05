@@ -21,7 +21,11 @@ The roadmap can evolve as use cases are clarified.
 - [x] HTTPS login UI and protected Next.js pages.
 - [x] Fiber HTTP, Zap request/lifecycle logs, and transactional audit events.
 - [x] Real Postgres integration tests and HTTPS authentication smoke checks.
-- [ ] Custom roles/permissions, invitations, MFA, verification, and recovery.
+- [x] Step 2A: organizational unit tree, four system roles, scoped assignments,
+      additive authorization, safe delegation, audit transactions, last-admin
+      protection, and unit-impact previews in the Go repository layer.
+- [ ] Step 2B: unit, role, and assignment management APIs and UI.
+- [ ] Invitations, MFA, verification, and recovery.
 
 ## Phase 1: connections and schema understanding
 
@@ -73,6 +77,6 @@ The roadmap can evolve as use cases are clarified.
 ## Open decisions
 
 First target database engine; schema versus data snapshot scope; branch/merge
-semantics; custom permissions; target credential storage; AI providers and
-privacy; mock protocol compatibility; and future hosting. None are selected by
-the foundation scaffold.
+semantics; permission-management workflows; target credential storage; AI
+providers and privacy; mock protocol compatibility; and future hosting. None are
+selected by the foundation scaffold.

@@ -6,10 +6,10 @@ Schewise aims to bring review, history, environment management, mock data,
 schema mapping, and harmonization to database projects.
 
 **Current milestone:** a runnable Go/Fiber API, Next.js web app,
-PostgreSQL-backed authentication, local HTTPS, durable audit events, and
-contributor CI. Target database connections, schema versioning/rollback, mock
-database endpoints, harmonization, custom roles, AI, and CD are not implemented
-yet. See the [roadmap](docs/roadmap.md).
+PostgreSQL-backed authentication, scoped RBAC foundations, local HTTPS, durable
+audit events, and contributor CI. Target database connections, schema
+versioning/rollback, mock database endpoints, harmonization, role-management
+APIs/UI, AI, and CD are not implemented yet. See the [roadmap](docs/roadmap.md).
 
 ## Run locally
 
@@ -43,7 +43,8 @@ This adds user-level CA trust using your login keychain, without admin-domain
 trust. See the [HTTPS and authentication guide](docs/authentication.md) for
 trust, removal, and other platforms. Do not bypass browser certificate warnings.
 Session cookies are always Secure, HttpOnly, and SameSite=Lax. Public
-registration is disabled; only an Administrator can create accounts.
+registration is disabled; creating accounts requires root account-management
+permission and authority to delegate Administrator.
 
 ```sh
 curl --cacert .local/root.crt https://localhost:8443/api/v1/health
@@ -58,6 +59,28 @@ Web edits in `apps/web/src` hot reload. After Go edits, use
 `docker compose restart api`. Rebuild after dependency/configuration changes.
 `make docker-down` stops services and preserves database and certificate
 volumes.
+
+## Access model (Step 2A)
+
+Units form an organization tree with one permanent root and a maximum depth of
+six. Users receive roles through unit or connection assignments; an assignment
+at a unit applies to its descendants. Effective permissions are the union of
+matching assignments, and access is denied when none grant the requested
+permission. Narrower assignments add access and cannot subtract inherited
+rights.
+
+Four immutable system roles are seeded: Administrator, Manager, Developer, and
+Viewer. Custom roles and cloning are available in the Go repository layer.
+System-level permissions require root assignments. Delegation requires both
+membership-management permission and every permission being delegated; the last
+active root Administrator is protected. Every successful metadata mutation and
+its audit entry commit together.
+
+This step supplies the data model, `Can`/`Explain`/`CanAssign`, repository
+operations, and unit-impact previews. Role/unit/assignment APIs and UI are
+reserved for Step 2B. Connection scopes have a fail-closed ownership adapter,
+not a real connection catalog or connector yet. See the
+[authorization guide](docs/authorization.md).
 
 ## Develop without API/web containers
 
@@ -101,7 +124,8 @@ read-only. No CD or release publishing is configured.
 ```text
 cmd/api/                 API process lifecycle
 cmd/migrate/             Application migration CLI
-internal/auth/           Passwords, sessions, permissions, audit transactions
+internal/auth/           Passwords, sessions, account bootstrap, auth audits
+internal/rbac/           Scoped permission engine, metadata repositories, impact previews
 internal/config/         Process environment configuration
 internal/database/       PostgreSQL access and embedded Goose migrations
 internal/httpapi/        Fiber routes and HTTP/integration tests
