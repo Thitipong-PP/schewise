@@ -209,10 +209,22 @@ cascades into child units, assignments, or connections.
 Organization is the protected `/` page. `/roles` manages custom roles with a
 permission catalog grouped by area and distinct-user/assignment counts.
 `/units/{id}` lists direct and inherited members, scoped role assignment with an
-optional note, and revocation. `/explain` shows the decision, granting
-assignments, and accessible units for an inspectable user. `/audit` supports
-filters and pagination. Menus and controls use API-evaluated permissions and
-capability flags; direct HTTP requests are independently enforced.
+optional note, and revocation. `/explain` supports optional filters. Resource
+alone lists active users with effective access; adding a permission filters that
+server-evaluated list. User alone lists accessible units within the actor's
+inspectable scope. Resource plus User lists that user's effective permissions
+and applicable assignments at the unit. Adding Permission requests the existing
+Explain result. Permission is disabled until a resource is selected, and at
+least Resource or User is required. Clearing Resource also clears Permission.
+Reset clears all filters.
+
+Without a selected resource, root user managers use the existing global
+directory; subtree managers initialize the existing directory with a readable
+manageable unit. Other readers can select themselves. This changes no API
+authorization or directory visibility. Results remain filtered by Go and all
+origin/blocker redaction rules still apply. `/audit` supports filters and
+pagination. Menus and controls use API-evaluated permissions and capability
+flags; direct HTTP requests are independently enforced.
 
 ### Inherited-source privacy
 

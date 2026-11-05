@@ -64,3 +64,31 @@ export function blockingLabel(
     return "Access from above is blocked by an inheritance boundary you do not have access to.";
   return block.reason_text;
 }
+
+export type AccessFilters = {
+  unitID: string;
+  userID: string;
+  permission: Permission | "";
+};
+
+export function accessSearchMode(
+  filters: AccessFilters,
+): "members" | "user" | "explain" | null {
+  if (filters.permission && !filters.unitID) return null;
+  if (filters.unitID && filters.userID && filters.permission) return "explain";
+  if (filters.unitID) return "members";
+  if (filters.userID) return "user";
+  return null;
+}
+
+// This filters server-evaluated results for presentation; Go owns permission decisions.
+export function filterAccessMembers(
+  members: components["schemas"]["Member"][],
+  filters: AccessFilters,
+) {
+  return members.filter(
+    (member) =>
+      (!filters.userID || member.user.id === filters.userID) &&
+      (!filters.permission || member.permissions.includes(filters.permission)),
+  );
+}

@@ -16,6 +16,8 @@ export function UserPicker({
   onChange,
   disabled = false,
   selfOnly,
+  allowGlobal = false,
+  required = true,
 }: {
   label: string;
   unitID: string;
@@ -23,6 +25,8 @@ export function UserPicker({
   onChange: (user: UserInfo | null) => void;
   disabled?: boolean;
   selfOnly?: UserInfo;
+  allowGlobal?: boolean;
+  required?: boolean;
 }) {
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
@@ -31,25 +35,34 @@ export function UserPicker({
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   useEffect(() => {
+    input.current?.setCustomValidity(
+      !value && text.trim()
+        ? `Select a ${label.toLowerCase()} from the results or clear this field.`
+        : "",
+    );
+  }, [value, text, label]);
+  useEffect(() => {
     const timer = setTimeout(() => setDebounced(text), 250);
     return () => clearTimeout(timer);
   }, [text]);
   const query = useQuery(
     useCallback(
       async (signal) => {
-        if (!unitID) return [];
         if (selfOnly)
           return selfOnly.email.toLowerCase().includes(debounced.toLowerCase())
             ? [selfOnly]
             : [];
+        if (!unitID && !allowGlobal) return [];
         return result(
           await api.GET("/api/v1/users", {
-            params: { query: { unit_id: unitID, q: debounced.trim() } },
+            params: {
+              query: { unit_id: unitID || undefined, q: debounced.trim() },
+            },
             signal,
           }),
         ).users;
       },
-      [unitID, debounced, selfOnly],
+      [unitID, debounced, selfOnly, allowGlobal],
     ),
     true,
   );
@@ -76,7 +89,10 @@ export function UserPicker({
         if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false);
       }}
     >
-      <label htmlFor={id}>{label}</label>
+      <label htmlFor={id}>
+        {label}
+        {!required && <span className="muted"> (optional)</span>}
+      </label>
       <div className="picker-control">
         <Search size={16} aria-hidden="true" />
         <input
@@ -98,7 +114,7 @@ export function UserPicker({
           maxLength={254}
           value={value?.email ?? text}
           disabled={disabled}
-          required
+          required={required}
           onFocus={() => setOpen(true)}
           onChange={(event) => {
             setText(event.target.value);
@@ -153,8 +169,8 @@ export function UserPicker({
                 onChange(null);
                 setText("");
                 setActive(-1);
-                setOpen(true);
                 input.current?.focus();
+                setOpen(required);
               }}
             >
               <X size={14} />

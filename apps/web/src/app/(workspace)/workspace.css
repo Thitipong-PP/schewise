@@ -874,3 +874,14 @@
 .explorer-form {
   align-items: start;
 }
+
+.explorer-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+.explorer-members .grant + .grant {
+  margin-top: 16px;
+}

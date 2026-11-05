@@ -82,11 +82,13 @@ its audit entry commit together.
 
 After signing in, Organization shows readable units. Open a unit to inspect its
 members and assign or revoke roles. Moving/deleting a unit requires a dry-run
-impact review in the confirmation dialog. Access explorer explains a user's
-permission at a unit; Audit log supports actor/action/time filters. Controls
-follow server-evaluated permissions and the Go API rechecks every operation.
-Unreadable inherited origins are hidden individually, and assignments outside
-your delegation authority are read-only. The parent-access toggle requires
+impact review in the confirmation dialog. Access explorer accepts a resource, a
+user, or both: browse a unit's users, inspect a user's accessible units,
+optionally filter by permission, or explain a specific user/resource/permission
+combination. Audit log supports actor/action/time filters. Controls follow
+server-evaluated permissions and the Go API rechecks every operation. Unreadable
+inherited origins are hidden individually, and assignments outside your
+delegation authority are read-only. The parent-access toggle requires
 `unit:manage_members` and an impact confirmation. A change that would remove the
 actor's membership-management permission is rejected; root Administrators retain
 their bypass. The impact includes before/after roles and permissions, affected

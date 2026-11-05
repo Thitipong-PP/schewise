@@ -3,6 +3,8 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   sourceLabel,
+  accessSearchMode,
+  filterAccessMembers,
   blockingLabel,
   hiddenSourceMessage,
   orderedUnits,
@@ -137,5 +139,41 @@ test("hidden blocking units never enter readable Explain labels", () => {
   assert.equal(
     blockingLabel({ ...hidden, source: "blocked" }),
     "Blocked by Payments",
+  );
+});
+
+test("access search accepts resource-only, user-only, optional permission, and a complete Explain query", () => {
+  const mode = (unitID, userID, permission = "") =>
+    accessSearchMode({ unitID, userID, permission });
+  assert.equal(mode("", ""), null);
+  assert.equal(mode("payments", ""), "members");
+  assert.equal(mode("", "bob"), "user");
+  assert.equal(mode("payments", "bob"), "members");
+  assert.equal(mode("payments", "", "docs:edit"), "members");
+  assert.equal(mode("payments", "bob", "docs:edit"), "explain");
+  assert.equal(mode("", "bob", "docs:edit"), null);
+});
+
+test("resource search filters only server-evaluated effective access", () => {
+  const rows = [
+    { user: { id: "bob" }, permissions: ["unit:read", "docs:edit"] },
+    { user: { id: "eve" }, permissions: ["unit:read"] },
+  ];
+  const filters = { unitID: "payments", userID: "", permission: "" };
+  assert.deepEqual(filterAccessMembers(rows, filters), rows);
+  assert.deepEqual(
+    filterAccessMembers(rows, { ...filters, permission: "docs:edit" }),
+    [rows[0]],
+  );
+  assert.deepEqual(filterAccessMembers(rows, { ...filters, userID: "eve" }), [
+    rows[1],
+  ]);
+  assert.deepEqual(
+    filterAccessMembers(rows, {
+      ...filters,
+      userID: "eve",
+      permission: "docs:edit",
+    }),
+    [],
   );
 });
