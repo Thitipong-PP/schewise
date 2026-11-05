@@ -8,12 +8,12 @@ const apiBaseURL = (
 
 const nextConfig: NextConfig = {
   poweredByHeader: false,
-  // Invite tokens are bearer secrets in paths; do not log incoming URLs.
+  // Invitation/reset tokens are bearer secrets in paths; do not log incoming URLs.
   logging: { incomingRequests: false },
   async headers() {
     return [
       {
-        source: "/invite/:path*",
+        source: "/:kind(invite|reset-password)/:path*",
         headers: [
           { key: "Referrer-Policy", value: "no-referrer" },
           { key: "Cache-Control", value: "no-store" },

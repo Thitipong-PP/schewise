@@ -94,9 +94,27 @@ func (r *Repository) SetUserActive(ctx context.Context, actor, user uuid.UUID, a
 			return nil, err
 		}
 		if !active {
-			if _, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=$1`, user); err != nil {
+			deleted, err := tx.ExecContext(ctx, `DELETE FROM sessions WHERE user_id=$1`, user)
+			if err != nil {
 				return nil, err
 			}
+			count, err := deleted.RowsAffected()
+			if err != nil {
+				return nil, err
+			}
+			if err := WriteAudit(ctx, tx, Audit{ActorUserID: actor, Action: "session.revoke_all", TargetType: "user", TargetID: user, Details: map[string]any{"count": count}}); err != nil {
+				return nil, err
+			}
+			if _, err := tx.ExecContext(ctx, `UPDATE password_resets SET revoked_at=clock_timestamp() WHERE user_id=$1 AND used_at IS NULL AND revoked_at IS NULL`, user); err != nil {
+				return nil, err
+			}
+		}
+		action := "user.reactivated"
+		if !active {
+			action = "user.deactivated"
+		}
+		if err := WriteAudit(ctx, tx, Audit{ActorUserID: actor, Action: action, TargetType: "user", TargetID: user, Details: map[string]any{"before": before, "after": active}}); err != nil {
+			return nil, err
 		}
 		return map[string]any{"before": before, "after": active}, nil
 	})

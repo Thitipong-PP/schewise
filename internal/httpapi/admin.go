@@ -138,6 +138,8 @@ func (s *server) visibleID(c fiber.Ctx) (uuid.UUID, error) {
 }
 func (s *server) registerAdmin(app *fiber.App) {
 	handlers := map[string]fiber.Handler{
+		"profile": s.profile, "updateProfile": s.updateProfile, "changePassword": s.changePassword, "ownSessions": s.ownSessions, "revokeOtherSessions": s.revokeOtherSessions, "revokeOwnSession": s.revokeOwnSession, "myAccess": s.myAccess,
+		"managedUsers": s.managedUsers, "deactivateUser": s.deactivateUser, "reactivateUser": s.reactivateUser, "createPasswordReset": s.createPasswordReset, "inspectPasswordReset": s.inspectPasswordReset, "resetPassword": s.resetPassword,
 		"createInvite": s.createInvite, "invites": s.invites, "revokeInvite": s.revokeInvite, "regenerateInvite": s.regenerateInvite, "inspectInvite": s.inspectInvite, "acceptInvite": s.acceptInvite,
 		"setInheritance": s.setInheritance, "previewInheritance": s.previewInheritance,
 		"context": s.accessContext, "units": s.units, "unitTree": s.unitTree, "createUnit": s.createUnit, "unit": s.unit, "updateUnit": s.updateUnit, "moveUnit": s.moveUnit, "deleteUnit": s.deleteUnit, "previewMove": s.previewMove, "previewDelete": s.previewDelete,
@@ -146,6 +148,8 @@ func (s *server) registerAdmin(app *fiber.App) {
 	}
 	inviteIP := s.rateLimit(20)
 	inviteGlobal := s.inviteGlobalLimit()
+	passwordIP := s.rateLimit(5)
+	passwordUser := s.passwordUserLimit()
 	for _, op := range api.Operations() {
 		if op.Existing {
 			continue
@@ -165,6 +169,9 @@ func (s *server) registerAdmin(app *fiber.App) {
 			chain = append(chain, inviteIP, inviteGlobal)
 		} else {
 			chain = append(chain, s.authenticated)
+		}
+		if op.ID == "changePassword" {
+			chain = append(chain, passwordIP, passwordUser)
 		}
 		if op.Method != "GET" {
 			chain = append(chain, s.mutation)

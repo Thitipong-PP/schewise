@@ -9,6 +9,8 @@ import {
   ScanSearch,
   ScrollText,
   MailPlus,
+  UserRound,
+  UsersRound,
 } from "lucide-react";
 import { LogoutButton } from "@/components/logout-button";
 import { api } from "@/lib/admin-api";
@@ -42,9 +44,18 @@ export function AppShell({
   }, [router]);
   const links = [
     {
+      href: "/admin/users",
+      label: "Users",
+      icon: UsersRound,
+      visible: context?.root_permissions.includes("user:manage"),
+    },
+    { href: "/account", label: "Account", icon: UserRound, visible: true },
+    {
       href: "/invites",
       label: "Invites",
       icon: MailPlus,
+      UserRound,
+      UsersRound,
       visible: context?.root_permissions.includes("user:manage"),
     },
     {
@@ -108,7 +119,7 @@ export function AppShell({
               })}
           </nav>
           <main className="workspace-main">
-            {context ? (
+            {context || path.startsWith("/account") ? (
               children
             ) : (
               <>

@@ -2,6 +2,33 @@ package config
 
 import "testing"
 
+func TestAccountConfiguration(t *testing.T) {
+	t.Setenv("PGPASSWORD", "synthetic-database-password")
+	t.Setenv("SCHEWISE_STORE_SESSION_IP", "")
+	t.Setenv("SCHEWISE_PASSWORD_RESET_TTL", "")
+	cfg, err := Load()
+	if err != nil || !cfg.StoreSessionIP || cfg.ResetTTL.Hours() != 24 {
+		t.Fatal("invalid account defaults", err)
+	}
+	t.Setenv("SCHEWISE_STORE_SESSION_IP", "false")
+	t.Setenv("SCHEWISE_PASSWORD_RESET_TTL", "48h")
+	cfg, err = Load()
+	if err != nil || cfg.StoreSessionIP || cfg.ResetTTL.Hours() != 48 {
+		t.Fatal("account configuration ignored", err)
+	}
+	t.Setenv("SCHEWISE_STORE_SESSION_IP", "invalid")
+	if _, err := Load(); err == nil {
+		t.Fatal("invalid IP privacy flag accepted")
+	}
+	t.Setenv("SCHEWISE_STORE_SESSION_IP", "true")
+	for _, ttl := range []string{"0s", "-1h", "169h", "invalid"} {
+		t.Setenv("SCHEWISE_PASSWORD_RESET_TTL", ttl)
+		if _, err := Load(); err == nil {
+			t.Errorf("invalid reset lifetime %q accepted", ttl)
+		}
+	}
+}
+
 func TestRequiresHTTPSOrigin(t *testing.T) {
 	t.Setenv("PGPASSWORD", "synthetic-database-password")
 	for _, origin := range []string{"http://localhost:8443", "https://localhost/path", "https://user:secret@localhost", "https://localhost?token=secret"} {

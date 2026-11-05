@@ -68,6 +68,7 @@ func NewApp(config Config) *fiber.App {
 	app.Post("/api/v1/auth/logout", s.mutation, s.logout)
 	app.Get("/api/v1/auth/me", s.authenticated, s.me)
 	app.Delete("/api/v1/users/:id/sessions", s.available, s.mutation, s.authenticated, s.permission(rbac.UserManage), s.revokeSessions)
+	app.Use("/api/v1/admin", s.available, s.authenticated, s.permission(rbac.UserManage))
 	s.registerAdmin(app)
 	return app
 }
@@ -76,6 +77,7 @@ func (s *server) requestLog(c fiber.Ctx) error {
 	start := time.Now()
 	requestID := uuid.NewString()
 	c.Locals("request_id", requestID)
+	c.Locals("auth_service", s.Auth)
 	c.Set("X-Request-ID", requestID)
 	ctx, cancel := context.WithTimeout(c.Context(), 10*time.Second)
 	defer cancel()
@@ -94,7 +96,7 @@ func (s *server) requestLog(c fiber.Ctx) error {
 	}
 	s.Logger.Info("http.request", zap.String("request_id", requestID), zap.String("method", c.Method()),
 		zap.String("route", path), zap.Int("status", c.Response().StatusCode()), zap.Duration("duration", time.Since(start)),
-		zap.String("actor_id", actorID(c)), zap.String("remote_ip", c.IP()))
+		zap.String("actor_id", actorID(c)), zap.String("remote_ip", s.requestIP(c)))
 	return nil
 }
 
@@ -105,9 +107,20 @@ func actorID(c fiber.Ctx) string {
 	return ""
 }
 
+func (s *server) requestIP(c fiber.Ctx) string {
+	if s.Auth == nil {
+		return ""
+	}
+	return s.Auth.SessionIP(c.IP())
+}
+
 func event(c fiber.Ctx, action, outcome string) auth.Event {
 	id, _ := c.Locals("request_id").(string)
-	return auth.Event{RequestID: id, ActorID: actorID(c), Action: action, Outcome: outcome, RemoteIP: c.IP()}
+	ip := c.IP()
+	if service, ok := c.Locals("auth_service").(*auth.Service); ok && service != nil {
+		ip = service.SessionIP(ip)
+	}
+	return auth.Event{RequestID: id, ActorID: actorID(c), Action: action, Outcome: outcome, RemoteIP: ip, UserAgent: c.Get("User-Agent")}
 }
 
 func (s *server) available(c fiber.Ctx) error {

@@ -65,7 +65,7 @@ func TestAdminEndpointsRequireAuthenticationAndAuthorization(t *testing.T) {
 	f := newAdminFixture(t)
 	cookie, csrf, _ := f.login(t, "frank@example.test")
 	for _, op := range api.Operations() {
-		if op.Existing || op.Public {
+		if op.Existing || op.Public || op.Self {
 			continue
 		}
 		t.Run(op.ID, func(t *testing.T) {

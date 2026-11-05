@@ -445,7 +445,10 @@ func (s *Service) AcceptInvite(ctx context.Context, token, name, password string
 	if n != 1 {
 		return nil, ErrUnauthorized
 	}
-	if _, err := tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at) VALUES($1,$2,$3,$4)`, tokenHash(next.Token), user.ID, csrf, next.ExpiresAt); err != nil {
+	if err := s.insertSession(ctx, tx, next, event); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET last_login_at=clock_timestamp() WHERE id=$1`, user.ID); err != nil {
 		return nil, err
 	}
 	userID := uuid.MustParse(user.ID)

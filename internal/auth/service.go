@@ -35,6 +35,7 @@ type User struct {
 }
 
 type Session struct {
+	ID        uuid.UUID `json:"-"`
 	Token     string    `json:"-"`
 	CSRF      string    `json:"-"`
 	User      *User     `json:"-"`
@@ -48,6 +49,7 @@ type Event struct {
 	Action    string
 	Outcome   string
 	RemoteIP  string
+	UserAgent string
 }
 
 type Service struct {
@@ -57,6 +59,7 @@ type Service struct {
 	dummyHash string
 	hashSlots chan struct{}
 	invites   InviteConfig
+	account   AccountConfig
 }
 
 func New(db *sql.DB, logger *zap.Logger, ttl time.Duration, options ...InviteConfig) (*Service, error) {
@@ -74,6 +77,9 @@ func New(db *sql.DB, logger *zap.Logger, ttl time.Duration, options ...InviteCon
 		config = options[0]
 	}
 	if err := s.configureInvites(config); err != nil {
+		return nil, err
+	}
+	if err := s.ConfigureAccount(AccountConfig{}); err != nil {
 		return nil, err
 	}
 	return s, nil
@@ -99,9 +105,9 @@ func (s *Service) Lookup(ctx context.Context, token string) (*Session, error) {
 	var userID, email, role sql.NullString
 	var displayName string
 	result := &Session{Token: token}
-	err := s.db.QueryRowContext(ctx, `SELECT s.csrf_token,s.expires_at,u.id,u.email,COALESCE(u.display_name,''),`+roleDisplay+`
+	err := s.db.QueryRowContext(ctx, `SELECT s.id,s.csrf_token,s.expires_at,u.id,u.email,COALESCE(u.display_name,''),`+roleDisplay+`
  FROM sessions s LEFT JOIN users u ON u.id=s.user_id
- WHERE s.token_hash=$1 AND s.expires_at>now() AND (s.user_id IS NULL OR u.is_active)`, tokenHash(token)).Scan(&result.CSRF, &result.ExpiresAt, &userID, &email, &displayName, &role)
+ WHERE s.token_hash=$1 AND s.expires_at>now() AND (s.user_id IS NULL OR u.is_active)`, tokenHash(token)).Scan(&result.ID, &result.CSRF, &result.ExpiresAt, &userID, &email, &displayName, &role)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUnauthorized
 	}
@@ -110,6 +116,10 @@ func (s *Service) Lookup(ctx context.Context, token string) (*Session, error) {
 	}
 	if userID.Valid {
 		result.User = &User{ID: userID.String, Email: email.String, Role: role.String, DisplayName: displayName}
+	}
+	// Conditional update bounds writes to at most once per five minutes/session.
+	if _, err := s.db.ExecContext(ctx, `UPDATE sessions SET last_seen_at=clock_timestamp() WHERE token_hash=$1 AND last_seen_at<clock_timestamp()-interval '5 minutes' AND expires_at>clock_timestamp()`, tokenHash(token)); err != nil {
+		return nil, err
 	}
 	return result, nil
 }
@@ -324,11 +334,15 @@ func (s *Service) Login(ctx context.Context, previous *Session, email, password 
 	defer func() { _ = tx.Rollback() }()
 	// Serialize with deactivation so a concurrent login cannot recreate sessions
 	// after the user's sessions have been revoked.
-	var active bool
-	if err := tx.QueryRowContext(ctx, `SELECT is_active FROM users WHERE id=$1 FOR UPDATE`, user.ID).Scan(&active); err != nil {
+	if err := rbac.Lock(ctx, tx); err != nil {
 		return nil, err
 	}
-	if !active {
+	var active bool
+	var liveHash string
+	if err := tx.QueryRowContext(ctx, `SELECT is_active,password_hash FROM users WHERE id=$1 FOR UPDATE`, user.ID).Scan(&active, &liveHash); err != nil {
+		return nil, err
+	}
+	if !active || liveHash != hash {
 		event.Action = "auth.login"
 		event.Outcome = "failure"
 		if err := writeEvent(ctx, tx, event); err != nil {
@@ -352,8 +366,11 @@ func (s *Service) Login(ctx context.Context, previous *Session, email, password 
 	if n != 1 {
 		return nil, ErrUnauthorized
 	}
-	_, err = tx.ExecContext(ctx, `INSERT INTO sessions(token_hash,user_id,csrf_token,expires_at) VALUES($1,$2,$3,$4)`, tokenHash(token), user.ID, csrf, result.ExpiresAt)
+	err = s.insertSession(ctx, tx, result, event)
 	if err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `UPDATE users SET last_login_at=clock_timestamp() WHERE id=$1`, user.ID); err != nil {
 		return nil, err
 	}
 	event.ActorID = user.ID

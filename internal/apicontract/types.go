@@ -94,3 +94,14 @@ type AcceptInviteRequest struct {
 	DisplayName string `json:"display_name"`
 	Password    string `json:"password"`
 }
+
+type ProfileRequest struct {
+	DisplayName string `json:"display_name"`
+}
+type PasswordChangeRequest struct {
+	CurrentPassword string `json:"current_password"`
+	Password        string `json:"password"`
+}
+type PasswordResetRequest struct {
+	Password string `json:"password"`
+}
