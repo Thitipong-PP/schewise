@@ -15,9 +15,9 @@ flowchart LR
 ```
 
 The application database contains units, roles, flat permissions, assignments,
-users, invitations, sessions, audit records, and migration state. It is separate
-from any future target database that a user connects. Application migrations
-must never be applied to a target connection.
+users, invitations, password resets, sessions, audit records, and migration
+state. It is separate from any future target database that a user connects.
+Application migrations must never be applied to a target connection.
 
 ## Boundaries and choices
 
@@ -109,4 +109,31 @@ appear in an immutable partial index.
 No SMTP is installed. An optional `auth.Mailer` runs after commit with a no-op
 default; a transport failure never rolls back a committed invitation or logs
 transport error details. A future durable delivery mechanism would need its own
-review. Account settings, reset, and 2FA are separate milestones.
+review. Account settings and admin-issued password reset are implemented; email
+change, 2FA, and personal access tokens are separate milestones.
+
+## Account settings and recovery
+
+Migration 00005 preserves the existing `users.is_active` column and last-admin
+triggers, adds last-login/session metadata and non-secret session UUIDs, and
+creates `password_resets`. `internal/auth` owns profile, credential, session,
+and reset operations; `internal/rbac.SetUserActive` remains the single status
+mutation with its existing permission/last-admin guards. Every security mutation
+and its audits share the metadata lock and a transaction. Login compares the
+verified hash with the live hash under that lock, preventing a password verified
+before a reset/change from creating a new session afterward.
+
+The self-service API resolves the account from a live session, never a user ID
+in the body/query. Self access reuses the RBAC effective-permission and origin
+projections inside one snapshot; accounts with no readable units receive an
+empty list. Account pages remain reachable without organization permissions.
+Admin APIs enforce live root `Can(user:manage)`; no role name is an authority.
+Password reset uses the shared token helper and independent purpose-specific
+storage, never exposes hashes/tokens in list APIs, and does not create a login
+session. Credential changes and deactivation revoke pending reset links.
+
+`SCHEWISE_STORE_SESSION_IP` defaults true and can omit new session/IP logs;
+`SCHEWISE_PASSWORD_RESET_TTL` defaults 24h. Session activity is updated at most
+once per five minutes. Device strings are untrusted/truncated at storage and
+coarsened at display. Both public token page families use no-referrer/no-store
+headers and excluded auth-proxy routes; API Origin/CSRF checks remain mandatory.

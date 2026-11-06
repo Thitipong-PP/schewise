@@ -31,7 +31,10 @@ The roadmap can evolve as use cases are clarified.
       revocation rules, and searchable member/user pickers.
 - [x] Private invite-only onboarding, one-time links, and scoped role
       assignment.
-- [ ] Account settings, MFA, verification, and recovery.
+- [x] Account profile/security/sessions/access, admin user status, and
+      admin-issued one-time password reset without email delivery.
+- [ ] Email changes, MFA, verification, personal access tokens, and email
+      delivery.
 
 ## Phase 1: connections and schema understanding
 

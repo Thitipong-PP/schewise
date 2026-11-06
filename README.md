@@ -7,10 +7,10 @@ schema mapping, and harmonization to database projects.
 
 **Current milestone:** a runnable Go/Fiber API, Next.js web app,
 PostgreSQL-backed authentication, scoped authorization and administration
-APIs/UI, invite-only onboarding, local HTTPS, durable audit events, and
-contributor CI. Target database connections, schema versioning/rollback, mock
-database endpoints, harmonization, AI, and CD are not implemented yet. See the
-[roadmap](docs/roadmap.md).
+APIs/UI, invite-only onboarding, account settings and user management, local
+HTTPS, durable audit events, and contributor CI. Target database connections,
+schema versioning/rollback, mock database endpoints, harmonization, AI, and CD
+are not implemented yet. See the [roadmap](docs/roadmap.md).
 
 ## Run locally
 
@@ -157,9 +157,55 @@ Invite tokens contain 32 random bytes and only SHA-256 digests are stored.
 Unavailable tokens return one generic error. Role/scope and issuer authority are
 rechecked at acceptance; invalidated invites stay unused. Public token endpoints
 share per-IP and global per-process rate limits. No SMTP transport is installed:
-the optional `auth.Mailer` defaults to a no-op. Account settings, password
-reset, and 2FA remain deferred. See [authentication](docs/authentication.md) for
+the optional `auth.Mailer` defaults to a no-op. Email changes, 2FA, and personal
+access tokens remain deferred. See [authentication](docs/authentication.md) for
 limits.
+
+## Account settings and user management
+
+Every signed-in user can open **Account**, including accounts without unit
+assignments. The tabs provide:
+
+- **Profile:** edit your display name; email is read-only.
+- **Security:** change your password using the current password and the same
+  policy as invitation acceptance. All other sessions and pending reset links
+  are revoked; the current session stays signed in.
+- **Sessions:** view active sessions, coarse device/browser labels, creation and
+  last-seen times, and optional IP addresses. Revoke one session or sign out of
+  all other devices. Session IDs are independent of authentication tokens.
+- **My access:** read-only readable units, effective permissions, roles, and
+  assignment sources. Unreadable inherited origins stay hidden.
+
+Root `user:manage` holders can open **Users**, search by email/display name, and
+view status, last recorded login, and role summaries. Deactivation requires
+confirmation, preserves the account and assignments, revokes all its sessions
+and pending reset links, and blocks sign-in with the same generic credential
+error. The last active root Administrator is protected, including from
+self-deactivation. Reactivation preserves the password and does not restore
+revoked sessions or reset links. Users are never deleted.
+
+To reset a password without email delivery:
+
+1. Open **Users**, choose **Create password reset link** for an active account,
+   and confirm. Root `user:manage` is required. A new link revokes older pending
+   links; the admin cannot set or read the user's password through this action.
+2. Copy the one-time link and share it privately with the account owner. Its
+   default expiry is 24 hours, configured by `SCHEWISE_PASSWORD_RESET_TTL`
+   (`1m`–`168h`). Links use `PUBLIC_BASE_URL`.
+3. The owner opens `/reset-password/<token>` and sets a new password. Success
+   consumes the link, revokes all that user's sessions, and returns them to
+   sign-in without creating a session. Invalid, expired, revoked, or used links
+   return the same generic error. The issuer must still hold account-management
+   permission, and the target must remain active.
+
+Set `SCHEWISE_STORE_SESSION_IP=false` to omit IP storage on new sessions and
+omit peer IPs from new HTTP/auth audit logs. Session lists also hide historical
+IP values while disabled; it does not erase already persisted metadata/logs.
+User agents are truncated to 256 characters at creation and only coarse labels
+are returned. Last-seen writes occur at most once per five minutes per session;
+last-login records successful sign-ins and invitation acceptance. Existing
+sessions survive the additive migration and may have no recorded device/IP or
+last-login history.
 
 The API contract is generated from backend DTOs/routes in
 [OpenAPI](docs/openapi.json), with generated TypeScript types checked in CI.

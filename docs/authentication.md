@@ -83,8 +83,9 @@ Permissions come from scoped assignments through the RBAC engine; see
 Public registration closes after the first account. Subsequent accounts require
 invitations with root `user:manage` and `CanAssign` for the intended role/scope.
 Per-user session revocation requires root `user:manage`. Role/unit/assignment
-management and invitations have HTTP APIs and UI; account settings, MFA,
-verification, and recovery remain deferred.
+management, invitations, account settings, and admin-issued reset have HTTP APIs
+and UI; email changes, MFA, verification, and personal access tokens remain
+deferred.
 
 The existing identity response's `role` string is a display-only, sorted list of
 assigned role names for compatibility with the development page. It does not
@@ -166,8 +167,8 @@ plan.
 After the first account, `/api/v1/auth/register` returns a generic 403 for all
 callers; administrators create invitations instead. Env bootstrap stays the
 normal installation path, before the API starts listening. No public sign-up,
-registration-enable flag, account settings, email sending, reset, or 2FA is
-implemented.
+registration-enable flag or public sign-up is implemented. Step 4 adds account
+settings and admin-issued reset; email sending and 2FA remain deferred.
 
 `PUBLIC_BASE_URL` is an HTTPS origin without a path/query/credentials and must
 match `SCHEWISE_ORIGIN`. It defaults to the latter. `SCHEWISE_INVITE_TTL`
@@ -210,3 +211,69 @@ New password hashes use the existing Argon2id work factors with 12–128 Unicode
 characters (maximum 512 UTF-8 bytes), a small case-insensitive common-password
 denylist, and no composition rules. Existing hashes remain verifiable, including
 older accepted passwords; the stricter policy applies to new credentials.
+
+## Step 4: accounts, sessions, and password reset
+
+All routes below use `/api/v1`. Authenticated mutations require the existing
+exact Origin and current synchronizer CSRF token. Unknown body fields are
+rejected, including email, role, or user IDs in self-service requests.
+
+| Route                                   | Behavior                                                                                                                      |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `GET/PATCH /me/profile`                 | Read your profile/update only your display name.                                                                              |
+| `POST /me/password`                     | Verify `current_password`, accept `password`, revoke other sessions and pending reset links.                                  |
+| `GET /me/sessions`                      | Active sessions owned by the live account, current marker, coarse device, optional IP, timestamps; no token/hash/CSRF values. |
+| `DELETE /me/sessions/{id}`              | Revoke only an owned non-secret session UUID. Missing/unowned UUIDs both return 404.                                          |
+| `POST /me/sessions/revoke-others`       | Preserve current session; revoke other owned sessions.                                                                        |
+| `GET /me/access`                        | Read-only effective access and per-assignment redacted sources; empty for accounts without readable units.                    |
+| `GET /admin/users`                      | Root `user:manage`: email/name search, active/inactive accounts, last recorded login and role summary; keyset pagination.     |
+| `POST /admin/users/{id}/deactivate`     | Root `user:manage`: use the existing last-admin guard, revoke sessions and pending resets, never delete.                      |
+| `POST /admin/users/{id}/reactivate`     | Root `user:manage`: preserve password/assignments; restore no sessions/reset links.                                           |
+| `POST /admin/users/{id}/password-reset` | Root `user:manage`: create a link once; revoke older pending reset links. Active targets only.                                |
+| `GET/POST /reset-password/{token}`      | Public inspection/replacement, generic unavailable errors, no automatic login. POST still requires Origin/CSRF.               |
+
+New session UUIDs are unrelated to bearer tokens. Migration 00005 preserves all
+existing session tokens and initializes their last-seen timestamps from creation
+time. New sessions record truncated user agents (256 Unicode characters), exact
+supplied peer IPs, and a current activity timestamp. The list returns only
+coarse browser/platform categories, never the raw agent. Activity updates use a
+conditional database write no more than once per five minutes. Successful login
+and invitation acceptance update `last_login_at`; old/null values mean unknown
+history. Failed login and password reset do not update it.
+
+`SCHEWISE_STORE_SESSION_IP=false` omits IPs for new sessions and new HTTP/auth
+audit logs and hides historical IPs from session responses. Existing records and
+historical logs are not erased. No trusted-forwarded-IP behavior is added: keep
+network/proxy configuration consistent with the Step 3 limiter limits.
+`SCHEWISE_PASSWORD_RESET_TTL` accepts `1m`–`168h`, default `24h`. Reset URLs use
+`PUBLIC_BASE_URL`, with the same HTTPS-origin validation as invitation links.
+
+Only SHA-256 digests of 32-byte random reset tokens are stored. New links revoke
+older pending links transactionally. Acceptance rechecks token state, target
+activity and the issuer's current root `user:manage` permission. Invalid,
+expired, used, revoked, wrong-purpose, inactive-target or unauthorized-issuer
+links share `reset_unavailable`. Public invite/reset attempts share the existing
+20/IP/minute and 200/global/minute per-process budgets. Password changes have
+5/IP/minute and 5/account/minute budgets. A wrong current password returns 400,
+preserving the valid session, and records a failure audit.
+
+Password change, password reset and deactivation serialize with login under the
+shared advisory lock. Login must still see the password hash it verified before
+creating a session, preventing concurrent old-password sign-ins from undoing
+revocation. User metadata, credential hashes, session revocations, reset
+consumption/revocation, and audit entries commit atomically or roll back. The
+current session stays valid only for self-service password change. Reset revokes
+all sessions and creates none. Self-deactivation is permitted while another
+active root Administrator remains; the API and existing DB triggers protect the
+last one. Pending reset links do not revive after reactivation.
+
+Use the Users page's copy-once dialog to deliver reset links privately; no SMTP,
+public email reset request, email change, 2FA, or personal access token support
+is installed. Keep any additional proxy/access logging configured to redact both
+`/invite/` and `/reset-password/` paths.
+
+Reset links are bearer capabilities: anyone holding a valid link can choose a
+replacement password, including its issuer. The admin API provides no direct
+password-edit/read operation, but this manual-delivery milestone cannot verify
+the recipient independently. Treat root `user:manage` as trusted
+account-recovery authority for all accounts, including root Administrators.

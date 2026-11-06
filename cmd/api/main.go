@@ -53,6 +53,9 @@ func run(ctx context.Context, logger *zap.Logger) error {
 	if err != nil {
 		return errors.New("authentication initialization failed")
 	}
+	if err := service.ConfigureAccount(auth.AccountConfig{DisableSessionIP: !cfg.StoreSessionIP, ResetTTL: cfg.ResetTTL}); err != nil {
+		return err
+	}
 	if _, err := service.Bootstrap(startup, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		return errors.New("administrator bootstrap failed; verify installation credentials and database availability")
 	}

@@ -273,3 +273,18 @@ roles can be deleted while an invite is pending; acceptance then returns the
 generic unavailable response without consuming the invite. Invite records do not
 count as active role assignments. The Invites UI offers only server-approved
 assignable roles, while the API independently enforces each operation.
+
+## Account administration and self access
+
+The `/admin/users` family always requires live root `Can(user:manage)`,
+including search and reset-link creation. Deactivation/reactivation delegates to
+the existing `SetUserActive` mutation, keeping shared locking and the
+last-active root-Administrator guard. Reset issuance grants no role/assignment
+and never accepts a replacement password from an administrator.
+
+Self-service routes require a live session owned by the current account and do
+not accept a target user ID. They work without unit permissions. `MyAccess`
+reuses the existing `effective`, `inspect`, and `assignmentView` projections in
+a single snapshot. Only readable units are returned; inherited sources retain
+the same per-assignment redaction and all rows are read-only. An account with no
+readable units receives an empty list rather than losing access to settings.

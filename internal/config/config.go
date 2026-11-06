@@ -6,19 +6,22 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 type Config struct {
-	Address       string
-	DatabaseURL   string
-	Origin        string
-	AdminEmail    string
-	AdminPassword string
-	SessionTTL    time.Duration
-	PublicBaseURL string
-	InviteTTL     time.Duration
+	Address        string
+	DatabaseURL    string
+	Origin         string
+	AdminEmail     string
+	AdminPassword  string
+	SessionTTL     time.Duration
+	PublicBaseURL  string
+	InviteTTL      time.Duration
+	ResetTTL       time.Duration
+	StoreSessionIP bool
 }
 
 func env(key, fallback string) string {
@@ -50,6 +53,20 @@ func Load() (Config, error) {
 		c.InviteTTL, err = time.ParseDuration(value)
 		if err != nil || c.InviteTTL < time.Minute || c.InviteTTL > 30*24*time.Hour {
 			return c, errors.New("SCHEWISE_INVITE_TTL must be between 1m and 720h")
+		}
+	}
+	c.StoreSessionIP = true
+	if value := os.Getenv("SCHEWISE_STORE_SESSION_IP"); value != "" {
+		c.StoreSessionIP, err = strconv.ParseBool(value)
+		if err != nil {
+			return c, errors.New("SCHEWISE_STORE_SESSION_IP must be true or false")
+		}
+	}
+	c.ResetTTL = 24 * time.Hour
+	if value := os.Getenv("SCHEWISE_PASSWORD_RESET_TTL"); value != "" {
+		c.ResetTTL, err = time.ParseDuration(value)
+		if err != nil || c.ResetTTL < time.Minute || c.ResetTTL > 168*time.Hour {
+			return c, errors.New("SCHEWISE_PASSWORD_RESET_TTL must be between 1m and 168h")
 		}
 	}
 	c.DatabaseURL = os.Getenv("SCHEWISE_DATABASE_URL")

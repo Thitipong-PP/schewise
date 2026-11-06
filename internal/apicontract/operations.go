@@ -15,6 +15,7 @@ type Query struct {
 type Operation struct {
 	Existing                  bool
 	Public                    bool
+	Self                      bool
 	ID, Method, Path, Summary string
 	Request, Response         any
 	Status                    int
@@ -31,6 +32,19 @@ func Operations() []Operation {
 		{ID: "regenerateInvite", Method: "POST", Path: "/api/v1/invites/{id}/regenerate", Summary: "Revoke and replace an unused invitation, returning the new link once", Request: EmptyRequest{}, Response: auth.InviteLink{}, Status: 201},
 		{ID: "inspectInvite", Method: "GET", Path: "/api/v1/invites/{token}", Summary: "Inspect a valid invitation; all unavailable tokens return the same error", Response: auth.InviteDisplay{}, Status: 200, Public: true},
 		{ID: "acceptInvite", Method: "POST", Path: "/api/v1/invites/{token}/accept", Summary: "Accept an invitation atomically and rotate into an authenticated session", Request: AcceptInviteRequest{}, Response: IdentityResponse{}, Status: 201, Public: true},
+		{ID: "profile", Method: "GET", Path: "/api/v1/me/profile", Summary: "Read the current account's profile", Response: IdentityResponse{}, Status: 200, Self: true},
+		{ID: "updateProfile", Method: "PATCH", Path: "/api/v1/me/profile", Summary: "Update only the current account's display name", Request: ProfileRequest{}, Response: IdentityResponse{}, Status: 200, Self: true},
+		{ID: "changePassword", Method: "POST", Path: "/api/v1/me/password", Summary: "Verify the current password, replace it, and revoke other sessions", Request: PasswordChangeRequest{}, Status: 204, Self: true},
+		{ID: "ownSessions", Method: "GET", Path: "/api/v1/me/sessions", Summary: "List the current account's active sessions without bearer tokens", Response: auth.SessionList{}, Status: 200, Self: true},
+		{ID: "revokeOtherSessions", Method: "POST", Path: "/api/v1/me/sessions/revoke-others", Summary: "Revoke all other sessions for the current account", Request: EmptyRequest{}, Status: 204, Self: true},
+		{ID: "revokeOwnSession", Method: "DELETE", Path: "/api/v1/me/sessions/{id}", Summary: "Revoke a session owned by the current account", Status: 204, Self: true},
+		{ID: "myAccess", Method: "GET", Path: "/api/v1/me/access", Summary: "Read only the current account's access with existing origin redaction", Response: rbac.SelfAccess{}, Status: 200, Self: true},
+		{ID: "managedUsers", Method: "GET", Path: "/api/v1/admin/users", Summary: "List active and deactivated accounts without credentials", Response: auth.ManagedUsers{}, Status: 200, Query: []Query{{"q", "string", "Search email or display name"}, {"before", "uuid", "Previous page cursor"}, {"limit", "integer", "Page size 1–200; default 50"}}},
+		{ID: "deactivateUser", Method: "POST", Path: "/api/v1/admin/users/{id}/deactivate", Summary: "Deactivate an account and revoke all its sessions, preserving the last root Administrator", Request: EmptyRequest{}, Status: 204},
+		{ID: "reactivateUser", Method: "POST", Path: "/api/v1/admin/users/{id}/reactivate", Summary: "Reactivate an account without changing its password", Request: EmptyRequest{}, Status: 204},
+		{ID: "createPasswordReset", Method: "POST", Path: "/api/v1/admin/users/{id}/password-reset", Summary: "Revoke older pending resets and return a replacement link once", Request: EmptyRequest{}, Response: auth.PasswordResetLink{}, Status: 201},
+		{ID: "inspectPasswordReset", Method: "GET", Path: "/api/v1/reset-password/{token}", Summary: "Inspect a usable password reset with generic rejection for unavailable links", Response: auth.PasswordResetDisplay{}, Status: 200, Public: true},
+		{ID: "resetPassword", Method: "POST", Path: "/api/v1/reset-password/{token}", Summary: "Consume a reset link and revoke all sessions without signing in", Request: PasswordResetRequest{}, Status: 204, Public: true},
 		{ID: "context", Method: "GET", Path: "/api/v1/access/context", Summary: "Read the current user's server-evaluated capabilities", Response: rbac.AccessContext{}, Status: 200},
 		{ID: "units", Method: "GET", Path: "/api/v1/units", Summary: "List only readable units, omitting unreadable ancestors", Response: UnitsResponse{}, Status: 200},
 		{ID: "unitTree", Method: "GET", Path: "/api/v1/units/tree", Summary: "Read the visible organization forest", Response: TreeResponse{}, Status: 200},

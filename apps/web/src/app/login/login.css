@@ -292,3 +292,17 @@
   color: var(--login-secondary);
   background: #f1f1f1;
 }
+
+.login-reset-note {
+  font-size: 13px;
+  color: var(--login-secondary);
+  margin: 0;
+}
+.login-reset-success {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.login-reset-success svg {
+  flex-shrink: 0;
+}
