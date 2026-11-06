@@ -38,15 +38,16 @@ The roadmap can evolve as use cases are clarified.
 
 ## Phase 1: connections and schema understanding
 
-- Select the first supported engine and define a connector boundary.
-- Define connection profiles and environment metadata.
-- Design secret storage for target database connection profiles.
-- Introspect schemas and present tables, relations, constraints, and types.
-- Define safe access modes and an initial synthetic database fixture.
+- [x] PostgreSQL-only profiles owned by units, with encrypted passwords.
+- [x] Read-only pg_catalog introspection and normalized structural history.
+- [x] Schema browser with declared FKs, comments, constraints, and indexes.
+- [x] RBAC-protected connection management and confirmed metadata deletion.
+- [x] Volatile statistics separated from structural hashes; synthetic fixture.
+- [ ] Other database engines and richer environment metadata.
 
 ## Phase 2: history and controlled changes
 
-- Define a canonical schema snapshot format and version history.
+- [x] Canonical PostgreSQL structural snapshots and snapshot selector.
 - Compare snapshots and detect drift between environments.
 - Review migration plans and record applied changes.
 - Design environment-specific execution and auditing.
@@ -85,6 +86,7 @@ The roadmap can evolve as use cases are clarified.
 
 ## Open decisions
 
-First target database engine; schema versus data snapshot scope; branch/merge
-semantics; target credential storage; AI providers and privacy; mock protocol
-compatibility; and future hosting. None are selected by the foundation scaffold.
+Branch/merge semantics; data snapshot storage/recovery; credential key rotation;
+AI providers and privacy; mock protocol compatibility; and future hosting.
+PostgreSQL, structural snapshots, and server-side AES-256-GCM profile encryption
+are selected for Step 5.

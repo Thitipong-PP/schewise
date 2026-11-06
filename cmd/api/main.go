@@ -10,6 +10,7 @@ import (
 
 	"github.com/Thitipong-PP/schewise/internal/auth"
 	"github.com/Thitipong-PP/schewise/internal/config"
+	"github.com/Thitipong-PP/schewise/internal/connections"
 	"github.com/Thitipong-PP/schewise/internal/database"
 	"github.com/Thitipong-PP/schewise/internal/httpapi"
 	"github.com/Thitipong-PP/schewise/internal/rbac"
@@ -49,6 +50,10 @@ func run(ctx context.Context, logger *zap.Logger) error {
 		return errors.New("application database migration failed")
 	}
 	logger.Info("database.migrated")
+	profiles, err := connections.New(startup, db, logger, connections.Options{SecretKey: cfg.SecretKey, StatementTimeout: cfg.StatementTimeout, OperationTimeout: cfg.StatementTimeout + 15*time.Second, HostAllow: cfg.HostAllow, HostDeny: cfg.HostDeny})
+	if err != nil {
+		return err
+	}
 	service, err := auth.New(db, logger, cfg.SessionTTL, auth.InviteConfig{PublicBaseURL: cfg.PublicBaseURL, TTL: cfg.InviteTTL})
 	if err != nil {
 		return errors.New("authentication initialization failed")
@@ -59,7 +64,8 @@ func run(ctx context.Context, logger *zap.Logger) error {
 	if _, err := service.Bootstrap(startup, cfg.AdminEmail, cfg.AdminPassword); err != nil {
 		return errors.New("administrator bootstrap failed; verify installation credentials and database availability")
 	}
-	app := httpapi.NewApp(httpapi.Config{Auth: service, RBAC: rbac.NewRepository(db, logger, nil), Logger: logger, Origin: cfg.Origin})
+
+	app := httpapi.NewApp(httpapi.Config{Auth: service, RBAC: rbac.NewRepository(db, logger, nil), Connections: profiles, Logger: logger, Origin: cfg.Origin})
 	cleanupCtx, cleanupCancel := context.WithCancel(ctx)
 	defer cleanupCancel()
 	go func() {

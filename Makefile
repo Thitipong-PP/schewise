@@ -31,8 +31,8 @@ lint: ## Run Go vet and ESLint
 test: ## Run Go tests with the race detector
 	go test -race -count=1 ./...
 
-integration-test: ## Run auth and RBAC tests in isolated PostgreSQL schemas
-	SCHEWISE_INTEGRATION_TESTS=1 node scripts/with-env.mjs go test -race -count=1 ./...
+integration-test: demo-db ## Run all integration tests using isolated metadata schemas and target databases
+	node scripts/with-env.mjs node scripts/connection-integration.mjs
 
 build: ## Build the API and production web app
 	go build -trimpath -o bin/schewise-api ./cmd/api
@@ -73,3 +73,11 @@ api-generate: ## Generate OpenAPI and TypeScript contracts from backend DTOs/rou
 api-check: ## Reject stale OpenAPI or generated frontend contracts
 	go run ./cmd/apigen --check
 	node scripts/api-types.mjs --check
+
+.PHONY: demo-db demo-up
+
+demo-db: ## Start only the isolated synthetic PostgreSQL target on port 5433
+	docker compose --profile demo up -d --wait demo-db
+
+demo-up: demo-db ## Register the synthetic target in a Demo unit (native API by default)
+	node scripts/with-env.mjs go run ./cmd/demo

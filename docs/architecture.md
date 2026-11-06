@@ -1,8 +1,8 @@
 # Architecture
 
 Schewise is a monorepo with one Go module and a pnpm workspace. Go owns
-identity, authorization, application metadata, and future database/AI domain
-behavior. Next.js owns presentation and page redirects.
+identity, authorization, application metadata, PostgreSQL catalogs, and future
+AI behavior. Next.js owns presentation and page redirects.
 
 ```mermaid
 flowchart LR
@@ -11,13 +11,14 @@ flowchart LR
     Caddy -->|/api/*| API[Go / Fiber]
     Next -->|Identity and API proxy| API
     API -->|pgx + Goose| AppDB[(Application Postgres)]
+    API -->|Read-only pg_catalog| Target[(Target Postgres)]
     API --> Zap[Redacted JSON stdout logs]
 ```
 
 The application database contains units, roles, flat permissions, assignments,
 users, invitations, password resets, sessions, audit records, and migration
-state. It is separate from any future target database that a user connects.
-Application migrations must never be applied to a target connection.
+state. It is separate from any target database that a user connects. Application
+migrations must never be applied to a target connection.
 
 ## Boundaries and choices
 
@@ -72,7 +73,8 @@ repositories, and administration API.
 ## Database versioning direction
 
 Git-like review/history is the product direction; database recovery has
-additional constraints. These remain future capabilities:
+additional constraints. Schema observations are implemented; the remaining
+capabilities are planned:
 
 | Concept            | Meaning                                                        |
 | ------------------ | -------------------------------------------------------------- |
@@ -88,10 +90,10 @@ show the environment, privileges, drift, plan, and data-loss implications.
 Transaction and DDL behavior must be evaluated per connector. Environment names
 such as staging are separate from a Git staging area.
 
-Target connectors, schema history, change execution, mock database endpoints,
-mapping/harmonization, AI assistance remain future work. Record material designs
-as ADRs and extend the [roadmap](roadmap.md) without treating planned features
-as implemented.
+PostgreSQL catalog snapshots are implemented. Change execution, mock database
+endpoints, mapping/harmonization, AI assistance remain future work. Record
+material designs as ADRs and extend the [roadmap](roadmap.md) without treating
+planned features as implemented.
 
 ## Invite-only onboarding
 
@@ -137,3 +139,23 @@ session. Credential changes and deactivation revoke pending reset links.
 once per five minutes. Device strings are untrusted/truncated at storage and
 coarsened at display. Both public token page families use no-referrer/no-store
 headers and excluded auth-proxy routes; API Origin/CSRF checks remain mandatory.
+
+## PostgreSQL catalog snapshots
+
+`internal/connections` owns encrypted profiles, destination policy, pgx catalog
+sessions, and normalized structural snapshots. HTTP transport stays in
+`internal/httpapi`; generated contracts cover the new Next.js routes. Migration
+00006 adds connections/snapshots and validates connection-scoped assignments
+with a generated FK. The default RBAC SQL resolver now reads real ownership.
+
+AES-256-GCM keys come only from server environment. Snapshot structure/comments
+are SHA-256 hashed independently of volatile statistics; unchanged syncs update
+the latest stats. Target I/O runs under a per-connection transaction advisory
+lock without holding the global metadata lock; authorization is rechecked under
+that global lock before committing local state and audits. Deletion requires a
+name confirmation and cascades only metadata for that connection. No target
+mutation is implemented. See [connections](connections.md) for the API, host
+policy/SSRF boundary, read-only guarantees, limits, and fixtures.
+
+[ADR 0006](adr/0006-postgres-connections.md) records the Step 5 storage,
+locking, and read-only connector decisions.

@@ -48,13 +48,15 @@ func (v *view) assignmentView(ctx context.Context, a Assignment, role Role, targ
 		result.ReadOnlyReason = HiddenSourceMessage
 		return result, nil
 	}
-	source, err := v.reader.Unit(ctx, a.Scope.ID)
-	if err != nil {
-		return result, err
-	}
 	result.ID = &a.ID
 	result.Scope = &a.Scope
-	result.SourceUnit = &UnitRef{ID: source.ID, Name: source.Name}
+	if a.Scope.Type == ScopeUnit {
+		source, err := v.reader.Unit(ctx, a.Scope.ID)
+		if err != nil {
+			return result, err
+		}
+		result.SourceUnit = &UnitRef{ID: source.ID, Name: source.Name}
+	}
 	result.Note = &a.Note
 	result.CreatedAt = &a.CreatedAt
 	result.CanRevoke, err = v.engine.CanRevoke(ctx, v.actor, a)
@@ -70,6 +72,24 @@ func (v *view) assignmentView(ctx context.Context, a Assignment, role Role, targ
 	}
 
 	return result, nil
+}
+
+// AssignmentProjection uses the same origin redaction and revocation rules for
+// both unit and connection assignments after creation.
+func (r *Repository) AssignmentProjection(ctx context.Context, actor uuid.UUID, a Assignment) (AssignmentView, error) {
+	var result AssignmentView
+	err := r.read(ctx, actor, func(v *view) error {
+		if err := v.requireRead(ctx, a.Scope); err != nil {
+			return err
+		}
+		role, err := v.reader.Role(ctx, a.RoleID)
+		if err != nil {
+			return err
+		}
+		result, err = v.assignmentView(ctx, a, role, a.Scope)
+		return err
+	})
+	return result, err
 }
 func (r *Repository) Members(ctx context.Context, actor, unitID uuid.UUID, directOnly, accessOnly bool) ([]Member, error) {
 	result := []Member{}
@@ -235,7 +255,7 @@ func (r *Repository) AccessForUser(ctx context.Context, actor, target uuid.UUID)
 func (r *Repository) ExplainFor(ctx context.Context, actor, target uuid.UUID, permission Permission, resource Scope) (ExplanationView, error) {
 	result := ExplanationView{Grants: []AssignmentView{}, Blocked: []BlockView{}}
 	err := r.read(ctx, actor, func(v *view) error {
-		if resource.Type != ScopeUnit {
+		if resource.Type != ScopeUnit && resource.Type != ScopeConnection {
 			return ErrForbidden
 		}
 		if err := v.inspect(ctx, target, resource); err != nil {

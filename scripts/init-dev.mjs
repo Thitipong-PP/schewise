@@ -11,6 +11,7 @@ PUBLIC_BASE_URL=https://localhost:8443
 SCHEWISE_INVITE_TTL=168h
 SCHEWISE_ADMIN_EMAIL=admin@example.test
 SCHEWISE_ADMIN_PASSWORD=${randomBytes(24).toString("hex")}
+SCHEWISE_SECRET_KEY=${randomBytes(32).toString("base64")}
 SCHEWISE_SESSION_TTL=24h
 SCHEWISE_STORE_SESSION_IP=true
 SCHEWISE_PASSWORD_RESET_TTL=24h
@@ -20,6 +21,8 @@ PGDATABASE=schewise
 PGUSER=schewise
 PGPASSWORD=${randomBytes(24).toString("hex")}
 POSTGRES_PASSWORD=${randomBytes(24).toString("hex")}
+DEMO_POSTGRES_PASSWORD=${randomBytes(24).toString("hex")}
+DEMO_DATABASE_PASSWORD=${randomBytes(24).toString("hex")}
 `,
     { flag: "wx", mode: 0o600 },
   );

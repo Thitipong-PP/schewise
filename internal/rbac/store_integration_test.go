@@ -253,6 +253,9 @@ func TestStoreDelegationAndRoleGuards(t *testing.T) {
 	}
 	connection := id("PaymentsDB")
 	f.connections[connection] = f.units["Payments"]
+	if _, err := f.db.Exec(`INSERT INTO connections(id,unit_id,name,engine,host,port,database,username,ssl_mode,encrypted_password,nonce) VALUES($1,$2,'Fixture','postgres','localhost',5432,'fixture','fixture','disable','\x00'::bytea,decode(repeat('00',12),'hex'))`, connection, f.units["Payments"]); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := f.repo.Assign(ctx, id("carol"), id("frank"), uuid.MustParse(rbac.ViewerRoleID), rbac.Scope{Type: rbac.ScopeConnection, ID: connection}, ""); err != nil {
 		t.Fatal(err)
 	}
@@ -696,16 +699,16 @@ func TestLegacyRoleNameConflictRollsBackMigration(t *testing.T) {
 		t.Fatal("failed migration changed old metadata")
 	}
 }
-func TestDefaultConnectionResolverFailsClosed(t *testing.T) {
+func TestDefaultConnectionResolverRejectsMissingRow(t *testing.T) {
 	f := newStoreFixture(t)
 	repo := rbac.NewRepository(f.db, zap.NewNop(), nil)
 	ctx := context.Background()
-	scope := rbac.Scope{Type: rbac.ScopeConnection, ID: id("not-implemented")}
-	if allowed, err := repo.Engine().Can(ctx, f.alice, rbac.ConnectionRead, scope); allowed || !errors.Is(err, rbac.ErrUnavailable) {
-		t.Fatal("connection access without ownership resolver", allowed, err)
+	scope := rbac.Scope{Type: rbac.ScopeConnection, ID: id("missing-connection")}
+	if allowed, err := repo.Engine().Can(ctx, f.alice, rbac.ConnectionRead, scope); allowed || !errors.Is(err, rbac.ErrNotFound) {
+		t.Fatal("missing connection must fail closed", allowed, err)
 	}
-	if _, err := repo.Assign(ctx, f.alice, id("frank"), uuid.MustParse(rbac.ViewerRoleID), scope, ""); !errors.Is(err, rbac.ErrUnavailable) {
-		t.Fatal("assignment without ownership resolver", err)
+	if _, err := repo.Assign(ctx, f.alice, id("frank"), uuid.MustParse(rbac.ViewerRoleID), scope, ""); !errors.Is(err, rbac.ErrNotFound) {
+		t.Fatal("assignment to missing connection", err)
 	}
 }
 

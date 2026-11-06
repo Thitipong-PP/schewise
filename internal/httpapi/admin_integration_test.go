@@ -70,6 +70,7 @@ func TestAdminEndpointsRequireAuthenticationAndAuthorization(t *testing.T) {
 		}
 		t.Run(op.ID, func(t *testing.T) {
 			path := strings.ReplaceAll(op.Path, "{id}", f.units["Payments"].String())
+			path = strings.ReplaceAll(path, "{sid}", uuid.NewString())
 			if strings.Contains(op.Path, "/users/{id}") {
 				path = strings.ReplaceAll(op.Path, "{id}", f.users["frank"].String())
 			}

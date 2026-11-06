@@ -8,29 +8,29 @@ compiler (Xcode command-line tools on macOS; GCC/Clang on Linux).
 
 Run from the repository root:
 
-| Command                 | Behavior                                                      |
-| ----------------------- | ------------------------------------------------------------- |
-| `make help`             | List commands                                                 |
-| `make init`             | Generate ignored local credentials without overwriting them   |
-| `make setup`            | Download Go dependencies and install the frozen pnpm lockfile |
-| `make dev-api`          | Read local environment and run the Go API                     |
-| `make dev-web`          | Read local environment and run Next.js                        |
-| `make fmt`              | Apply gofmt and Prettier                                      |
-| `make fmt-check`        | Check formatting without editing                              |
-| `make lint`             | Go vet and ESLint                                             |
-| `make test`             | Go race tests; DB tests skip unless explicitly enabled        |
-| `make integration-test` | Run auth/SQL tests in isolated Postgres schemas               |
-| `make api-generate`     | Regenerate OpenAPI and frontend API types                     |
-| `make api-check`        | Check generated contracts match backend routes/DTOs           |
-| `make check`            | Contracts, formatting, lint, Go/web tests, and TypeScript     |
-| `make build`            | Build API/migration binaries and production web app           |
-| `make smoke`            | Launch production builds and verify page/API/auth integration |
-| `make auth-smoke`       | Verify the running HTTPS stack with local CA validation       |
-| `make migrate`          | Apply application migrations (also done at API startup)       |
-| `make migrate-status`   | Show application migration version                            |
-| `make docker-up`        | Build/start the complete development stack                    |
-| `make docker-down`      | Stop/remove containers; preserve data/CA/cache volumes        |
-| `make local-ca`         | Export the HTTPS gateway's public CA certificate              |
+| Command                 | Behavior                                                        |
+| ----------------------- | --------------------------------------------------------------- |
+| `make help`             | List commands                                                   |
+| `make init`             | Generate ignored local credentials without overwriting them     |
+| `make setup`            | Download Go dependencies and install the frozen pnpm lockfile   |
+| `make dev-api`          | Read local environment and run the Go API                       |
+| `make dev-web`          | Read local environment and run Next.js                          |
+| `make fmt`              | Apply gofmt and Prettier                                        |
+| `make fmt-check`        | Check formatting without editing                                |
+| `make lint`             | Go vet and ESLint                                               |
+| `make test`             | Go race tests; DB tests skip unless explicitly enabled          |
+| `make integration-test` | Run all SQL tests in isolated schemas and demo target databases |
+| `make api-generate`     | Regenerate OpenAPI and frontend API types                       |
+| `make api-check`        | Check generated contracts match backend routes/DTOs             |
+| `make check`            | Contracts, formatting, lint, Go/web tests, and TypeScript       |
+| `make build`            | Build API/migration binaries and production web app             |
+| `make smoke`            | Launch production builds and verify page/API/auth integration   |
+| `make auth-smoke`       | Verify the running HTTPS stack with local CA validation         |
+| `make migrate`          | Apply application migrations (also done at API startup)         |
+| `make migrate-status`   | Show application migration version                              |
+| `make docker-up`        | Build/start the complete development stack                      |
+| `make docker-down`      | Stop/remove containers; preserve data/CA/cache volumes          |
+| `make local-ca`         | Export the HTTPS gateway's public CA certificate                |
 
 `pnpm lint`, `pnpm typecheck`, `pnpm test:toolchain`, `pnpm test:admin`, and
 `pnpm build` operate on the web package. `pnpm format` covers supported
@@ -213,3 +213,12 @@ rules to hide compatibility failures.
   or install the pinned toolchain manually.
 - **Lockfile mismatch:** use the pnpm version in `packageManager`, intentionally
   update dependencies, and commit the lockfile.
+
+## PostgreSQL fixtures
+
+`make demo-db` starts the dedicated synthetic target on localhost:5433;
+`make demo-up` registers/syncs it using the installation user's root
+permissions. `make integration-test` starts that fixture and creates isolated
+target databases there, independently from application metadata test schemas.
+See [connections](connections.md) for setup, encryption/host-policy settings,
+least-privilege SQL, and the Compose-versus-native registered destination.

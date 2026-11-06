@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { createContext, useContext, useEffect } from "react";
 import {
+  Database,
   GitBranch,
   Shield,
   ScanSearch,
@@ -43,6 +44,12 @@ export function AppShell({
     return () => api.eject(middleware);
   }, [router]);
   const links = [
+    {
+      href: "/connections",
+      label: "Connections",
+      icon: Database,
+      visible: context?.can_read_connections,
+    },
     {
       href: "/admin/users",
       label: "Users",

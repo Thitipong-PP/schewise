@@ -53,6 +53,8 @@ func (s *schemas) schema(t reflect.Type, optional bool) map[string]any {
 		return map[string]any{"type": "boolean"}
 	case reflect.Int, reflect.Int64, reflect.Int32:
 		return map[string]any{"type": "integer"}
+	case reflect.Float32, reflect.Float64:
+		return map[string]any{"type": "number"}
 	case reflect.Slice, reflect.Array:
 		return map[string]any{"type": "array", "items": s.schema(t.Elem(), false)}
 	case reflect.Map:

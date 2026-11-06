@@ -109,6 +109,14 @@ export function UnitDetail({ id }: { id: string }) {
                 <p className="muted">{query.data.unit.description}</p>
               )}
             </div>
+            {query.data.unit.permissions.includes("connection:read") && (
+              <Link
+                className="secondary connection-unit-link"
+                href={`/units/${id}/connections`}
+              >
+                Connections
+              </Link>
+            )}
             {query.data.unit.permissions.includes("unit:manage_members") && (
               <button onClick={() => setAssigning(true)}>
                 <UserPlus size={16} />

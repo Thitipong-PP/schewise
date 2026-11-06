@@ -190,6 +190,162 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/connections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List readable connections; redact destination details without manage permission */
+    get: operations["connections"];
+    put?: never;
+    /** Create an encrypted PostgreSQL profile in a manageable unit */
+    post: operations["createConnection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connections/{id}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read permitted connection metadata */
+    get: operations["connection"];
+    put?: never;
+    post?: never;
+    /** Delete confirmed connection metadata atomically without touching the target */
+    delete: operations["deleteConnection"];
+    options?: never;
+    head?: never;
+    /** Update a connection without changing its owner or password */
+    patch: operations["updateConnection"];
+    trace?: never;
+  };
+  "/api/v1/connections/{id}/dry-run/delete": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Preview snapshots and direct access removed by deletion */
+    post: operations["previewConnectionDelete"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connections/{id}/password": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Replace the encrypted target password separately */
+    post: operations["connectionPassword"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connections/{id}/schema": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read the latest normalized structure and refreshed statistics */
+    get: operations["schema"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connections/{id}/snapshots": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List authorized structural snapshots with keyset pagination */
+    get: operations["snapshots"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connections/{id}/snapshots/{sid}": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** Read an authorized snapshot from this connection */
+    get: operations["snapshot"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connections/{id}/sync": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Introspect catalogs and refresh structural history and volatile stats */
+    post: operations["syncConnection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
+  "/api/v1/connections/{id}/test": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    get?: never;
+    put?: never;
+    /** Test read-only connectivity and return a sanitized result */
+    post: operations["testConnection"];
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/invites": {
     parameters: {
       query?: never;
@@ -572,6 +728,23 @@ export interface paths {
     patch?: never;
     trace?: never;
   };
+  "/api/v1/units/{id}/connections": {
+    parameters: {
+      query?: never;
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    /** List readable connections owned by a readable unit */
+    get: operations["unitConnections"];
+    put?: never;
+    post?: never;
+    delete?: never;
+    options?: never;
+    head?: never;
+    patch?: never;
+    trace?: never;
+  };
   "/api/v1/units/{id}/dry-run/delete": {
     parameters: {
       query?: never;
@@ -806,6 +979,7 @@ export interface components {
       user_id: string;
     };
     AccessContext: {
+      can_read_connections: boolean;
       can_read_units: boolean;
       root_permissions: (
         | "user:manage"
@@ -906,11 +1080,50 @@ export interface components {
     CloneRequest: {
       name: string;
     };
+    Column: {
+      comment: string | null;
+      data_type: string;
+      default_expression: string | null;
+      generated: string;
+      generated_expression: string | null;
+      identity: string;
+      name: string;
+      nullable: boolean;
+      ordinal: number;
+    };
     Connection: {
       /** Format: uuid */
       id: string;
       /** Format: uuid */
       unit_id: string;
+    };
+    Constraint: {
+      columns: string[];
+      comment: string | null;
+      deferrable: boolean;
+      definition: string;
+      initially_deferred: boolean;
+      kind: string;
+      name: string;
+      on_delete: string;
+      on_update: string;
+      reference: components["schemas"]["Reference"] | null;
+      validated: boolean;
+    };
+    Content: {
+      schemas: components["schemas"]["Schema"][];
+    };
+    CreateInput: {
+      database: string;
+      engine: string;
+      host: string;
+      name: string;
+      password: string;
+      port: number;
+      ssl_mode: string;
+      /** Format: uuid */
+      unit_id: string;
+      username: string;
     };
     CreateUnitRequest: {
       description: string;
@@ -918,6 +1131,24 @@ export interface components {
       name: string;
       /** Format: uuid */
       parent_id: string;
+    };
+    DeleteImpact: {
+      assignment_count: number;
+      /** Format: uuid */
+      connection_id: string;
+      name: string;
+      snapshot_count: number;
+      users: components["schemas"]["UserRef"][];
+    };
+    DeleteInput: {
+      name: string;
+    };
+    Details: {
+      database: string;
+      host: string;
+      port: number;
+      ssl_mode: string;
+      username: string;
     };
     EmptyRequest: Record<string, never>;
     Error: {
@@ -961,8 +1192,31 @@ export interface components {
       connections: components["schemas"]["Connection"][];
       executable: boolean;
     };
+    Index: {
+      columns: string[];
+      comment: string | null;
+      definition: string;
+      included_columns: string[];
+      method: string;
+      name: string;
+      predicate: string | null;
+      primary: boolean;
+      unique: boolean;
+      valid: boolean;
+    };
     InheritRequest: {
       inherit_access: boolean | null;
+    };
+    Input: {
+      database: string;
+      engine: string;
+      host: string;
+      name: string;
+      port: number;
+      ssl_mode: string;
+      /** Format: uuid */
+      unit_id: string;
+      username: string;
     };
     Invite: {
       /** Format: date-time */
@@ -1008,6 +1262,9 @@ export interface components {
       /** Format: uuid */
       next_before?: string;
     };
+    List: {
+      connections: components["schemas"]["View"][];
+    };
     ManagedUser: {
       can_deactivate: boolean;
       deactivate_reason: string;
@@ -1050,8 +1307,18 @@ export interface components {
       /** Format: uuid */
       parent_id: string;
     };
+    OperationResult: {
+      code: string;
+      connection: components["schemas"]["View"];
+      created_snapshot: boolean;
+      message: string;
+      success: boolean;
+    };
     PasswordChangeRequest: {
       current_password: string;
+      password: string;
+    };
+    PasswordInput: {
       password: string;
     };
     PasswordResetDisplay: {
@@ -1093,6 +1360,14 @@ export interface components {
     };
     ProfileRequest: {
       display_name: string;
+    };
+    Reference: {
+      columns: string[];
+      schema: string;
+      table: string;
+    };
+    Result: {
+      connection: components["schemas"]["View"];
     };
     Role: {
       description: string;
@@ -1176,6 +1451,16 @@ export interface components {
     RolesResponse: {
       roles: components["schemas"]["RoleView"][];
     };
+    RowEstimate: {
+      rows: number;
+      schema: string;
+      table: string;
+    };
+    Schema: {
+      comment: string | null;
+      name: string;
+      tables: components["schemas"]["Table"][];
+    };
     Scope: {
       /** Format: uuid */
       id: string;
@@ -1221,6 +1506,50 @@ export interface components {
     };
     SessionList: {
       sessions: components["schemas"]["SessionInfo"][];
+    };
+    Snapshot: {
+      /** Format: uuid */
+      connection_id: string;
+      content: components["schemas"]["Content"];
+      content_hash: string;
+      /** Format: uuid */
+      id: string;
+      stats: components["schemas"]["Stats"];
+      /** Format: date-time */
+      taken_at: string;
+    };
+    SnapshotInfo: {
+      /** Format: uuid */
+      connection_id: string;
+      content_hash: string;
+      /** Format: uuid */
+      id: string;
+      stats: components["schemas"]["Stats"];
+      /** Format: date-time */
+      taken_at: string;
+    };
+    Snapshots: {
+      /** Format: uuid */
+      next_before?: string;
+      snapshots: components["schemas"]["SnapshotInfo"][];
+    };
+    Stats: {
+      columns: number;
+      constraints: number;
+      estimates: components["schemas"]["RowEstimate"][];
+      indexes: number;
+      /** Format: date-time */
+      observed_at: string;
+      schemas: number;
+      tables: number;
+    };
+    Table: {
+      columns: components["schemas"]["Column"][];
+      comment: string | null;
+      constraints: components["schemas"]["Constraint"][];
+      indexes: components["schemas"]["Index"][];
+      kind: string;
+      name: string;
     };
     TreeResponse: {
       roots: components["schemas"]["UnitNode"][];
@@ -1312,8 +1641,27 @@ export interface components {
       id: string;
       is_active: boolean;
     };
+    UserRef: {
+      email: string;
+      /** Format: uuid */
+      id: string;
+    };
     UsersResponse: {
       users: components["schemas"]["UserInfo"][];
+    };
+    View: {
+      can_manage: boolean;
+      can_operate: boolean;
+      can_read_schema: boolean;
+      details?: components["schemas"]["Details"];
+      engine: string;
+      /** Format: uuid */
+      id: string;
+      last_error: string | null;
+      last_synced_at: string | null;
+      name: string;
+      status: string;
+      unit?: components["schemas"]["UnitRef"];
     };
   };
   responses: never;
@@ -2316,6 +2664,1179 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["IdentityResponse"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  connections: {
+    parameters: {
+      query?: {
+        /** @description Optional owning unit */
+        unit_id?: string;
+      };
+      header?: never;
+      path?: never;
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["List"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  createConnection: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": string;
+      };
+      path?: never;
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["CreateInput"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      201: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Result"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  connection: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Result"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  deleteConnection: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["DeleteInput"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      204: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content?: never;
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  updateConnection: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["Input"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Result"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  previewConnectionDelete: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EmptyRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["DeleteImpact"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  connectionPassword: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["PasswordInput"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Result"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  schema: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Snapshot"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  snapshots: {
+    parameters: {
+      query?: {
+        /** @description Previous page cursor */
+        before?: string;
+        /** @description Page size 1–200, default 50 */
+        limit?: number;
+      };
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Snapshots"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  snapshot: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+        sid: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Snapshot"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  syncConnection: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EmptyRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OperationResult"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  testConnection: {
+    parameters: {
+      query?: never;
+      header: {
+        "X-CSRF-Token": string;
+      };
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody: {
+      content: {
+        "application/json": components["schemas"]["EmptyRequest"];
+      };
+    };
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["OperationResult"];
         };
       };
       /** @description Request rejected; unreadable and missing units both return 403 */
@@ -5183,6 +6704,100 @@ export interface operations {
         };
         content: {
           "application/json": components["schemas"]["MembersResponse"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      400: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      401: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      403: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      404: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      409: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      413: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      429: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+      /** @description Request rejected; unreadable and missing units both return 403 */
+      503: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["Error"];
+        };
+      };
+    };
+  };
+  unitConnections: {
+    parameters: {
+      query?: never;
+      header?: never;
+      path: {
+        id: string;
+      };
+      cookie?: never;
+    };
+    requestBody?: never;
+    responses: {
+      /** @description Success */
+      200: {
+        headers: {
+          [name: string]: unknown;
+        };
+        content: {
+          "application/json": components["schemas"]["List"];
         };
       };
       /** @description Request rejected; unreadable and missing units both return 403 */
