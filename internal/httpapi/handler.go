@@ -9,10 +9,12 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"strings"
 	"time"
 
 	api "github.com/Thitipong-PP/schewise/internal/apicontract"
 	"github.com/Thitipong-PP/schewise/internal/auth"
+	"github.com/Thitipong-PP/schewise/internal/connections"
 	"github.com/Thitipong-PP/schewise/internal/rbac"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
@@ -24,10 +26,11 @@ import (
 const CookieName = "__Host-schewise_session"
 
 type Config struct {
-	Auth   *auth.Service
-	RBAC   *rbac.Repository
-	Logger *zap.Logger
-	Origin string
+	Auth        *auth.Service
+	RBAC        *rbac.Repository
+	Logger      *zap.Logger
+	Origin      string
+	Connections *connections.Service
 }
 
 type server struct{ Config }
@@ -37,9 +40,13 @@ func NewApp(config Config) *fiber.App {
 		config.Logger = zap.NewNop()
 	}
 	s := &server{Config: config}
+	writeTimeout := 20 * time.Second
+	if config.Connections != nil {
+		writeTimeout = max(writeTimeout, config.Connections.OperationTimeout()+10*time.Second)
+	}
 	app := fiber.New(fiber.Config{
 		AppName: "Schewise", Immutable: true, BodyLimit: 8 * 1024, ReadTimeout: 15 * time.Second,
-		WriteTimeout: 20 * time.Second, IdleTimeout: 60 * time.Second,
+		WriteTimeout: writeTimeout, IdleTimeout: 60 * time.Second,
 		ErrorHandler: func(c fiber.Ctx, err error) error {
 			code := fiber.StatusInternalServerError
 			var fe *fiber.Error
@@ -79,7 +86,11 @@ func (s *server) requestLog(c fiber.Ctx) error {
 	c.Locals("request_id", requestID)
 	c.Locals("auth_service", s.Auth)
 	c.Set("X-Request-ID", requestID)
-	ctx, cancel := context.WithTimeout(c.Context(), 10*time.Second)
+	timeout := 10 * time.Second
+	if s.Connections != nil && strings.HasPrefix(c.Path(), "/api/v1/connections/") && (strings.HasSuffix(c.Path(), "/sync") || strings.HasSuffix(c.Path(), "/test")) {
+		timeout = s.Connections.OperationTimeout() + 5*time.Second
+	}
+	ctx, cancel := context.WithTimeout(c.Context(), timeout)
 	defer cancel()
 	c.SetContext(ctx)
 	err := c.Next()

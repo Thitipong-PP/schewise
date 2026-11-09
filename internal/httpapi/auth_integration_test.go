@@ -17,6 +17,7 @@ import (
 
 	"github.com/Thitipong-PP/schewise/internal/auth"
 	"github.com/Thitipong-PP/schewise/internal/config"
+	"github.com/Thitipong-PP/schewise/internal/connections"
 	"github.com/Thitipong-PP/schewise/internal/database"
 	"github.com/Thitipong-PP/schewise/internal/httpapi"
 	"github.com/Thitipong-PP/schewise/internal/rbac"
@@ -98,7 +99,11 @@ func newAuthFixture(t *testing.T, bootstrap bool) *fixture {
 			t.Fatal("bootstrap failed", err)
 		}
 	}
-	return &fixture{db: db, app: httpapi.NewApp(httpapi.Config{Auth: service, RBAC: rbac.NewRepository(db, logger, nil), Logger: logger, Origin: testOrigin}), service: service, logs: logs}
+	profiles, err := connections.New(context.Background(), db, logger, connections.Options{SecretKey: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &fixture{db: db, app: httpapi.NewApp(httpapi.Config{Auth: service, Connections: profiles, RBAC: rbac.NewRepository(db, logger, nil), Logger: logger, Origin: testOrigin}), service: service, logs: logs}
 }
 
 type result struct {

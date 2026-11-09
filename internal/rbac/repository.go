@@ -24,6 +24,9 @@ func NewRepository(db *sql.DB, logger *zap.Logger, connections ConnectionResolve
 	if logger == nil {
 		logger = zap.NewNop()
 	}
+	if connections == nil {
+		connections = SQLConnectionResolver{}
+	}
 	return &Repository{db: db, logger: logger, connections: connections}
 }
 func (r *Repository) Engine() *Engine { return NewEngine(NewSQLReader(r.db, r.connections)) }

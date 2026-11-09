@@ -8,9 +8,10 @@ schema mapping, and harmonization to database projects.
 **Current milestone:** a runnable Go/Fiber API, Next.js web app,
 PostgreSQL-backed authentication, scoped authorization and administration
 APIs/UI, invite-only onboarding, account settings and user management, local
-HTTPS, durable audit events, and contributor CI. Target database connections,
-schema versioning/rollback, mock database endpoints, harmonization, AI, and CD
-are not implemented yet. See the [roadmap](docs/roadmap.md).
+HTTPS, durable audit events, encrypted PostgreSQL target connections, read-only
+schema introspection/history, and contributor CI. Schema diff/rollback, mock
+database endpoints, harmonization, AI, and CD are not implemented yet. See the
+[roadmap](docs/roadmap.md).
 
 ## Run locally
 
@@ -268,8 +269,8 @@ docs/                    Architecture, authentication, development, ADRs, roadma
 .github/                 CI, updates, issue/PR templates
 ```
 
-The application database is separate from future user-connected target
-databases. Read the [architecture](docs/architecture.md) and
+The application database is separate from user-connected target databases. Read
+the [architecture](docs/architecture.md) and
 [authentication contract](docs/authentication.md) before extending the backend.
 
 ## Contributing
@@ -279,3 +280,27 @@ All repository content and collaboration use English. Read
 [Code of Conduct](CODE_OF_CONDUCT.md), and [SECURITY.md](SECURITY.md).
 
 Licensed under [Apache-2.0](LICENSE).
+
+## PostgreSQL target connections
+
+Set `SCHEWISE_SECRET_KEY` to a base64-encoded random 32-byte key before creating
+connections. New `make init` installations include one. For older `.env` files,
+generate it once with `openssl rand -base64 32` and add the value privately.
+Preserve the original key with metadata backups; existing profiles require it at
+startup. Passwords use AES-256-GCM and are never returned by the API.
+
+Open **Connections**, or a unit's **Connections**, to add a PostgreSQL profile,
+test it, sync catalogs, and browse tables/columns/declared
+keys/indexes/comments. Metadata visibility and schema access use RBAC
+independently. Read-only pgx sessions and transactions query `pg_catalog`,
+without sampling or scanning table data. `content_hash` includes
+structure/comments; row estimates live in stats and update even when no new
+structural snapshot is needed. Schema history is not a data backup or rollback
+tool.
+
+For a local synthetic commerce database, run `make demo-up` after initializing
+the app. The Compose API needs
+`SCHEWISE_DEMO_HOST=demo-db SCHEWISE_DEMO_PORT=5432 make demo-up`; a native API
+uses localhost:5433 by default. See [connections](docs/connections.md) for the
+least-privilege SQL snippet, deletion impact/confirmation, host allow/deny
+settings and SSRF considerations, timeout configuration, and test fixtures.

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	api "github.com/Thitipong-PP/schewise/internal/apicontract"
+	"github.com/Thitipong-PP/schewise/internal/connections"
 	"github.com/Thitipong-PP/schewise/internal/rbac"
 	"github.com/gofiber/fiber/v3"
 	"github.com/google/uuid"
@@ -85,6 +86,12 @@ func respond(c fiber.Ctx, value any) error {
 func (s *server) adminError(c fiber.Ctx, err error) error {
 	status, code, message := 503, "service_unavailable", "Service temporarily unavailable."
 	switch {
+	case errors.Is(err, connections.ErrBusy):
+		status, code, message = 409, "connection_busy", "A connection operation is running. Try again after it finishes."
+	case errors.Is(err, connections.ErrConfirmation):
+		status, code, message = 400, "confirmation_mismatch", "Type the connection name exactly to confirm deletion."
+	case errors.Is(err, connections.ErrSecretKey):
+		status, code, message = 503, "encryption_key_unavailable", "The connection encryption key is unavailable. Contact the installation administrator."
 	case errors.Is(err, rbac.ErrForbidden):
 		status, code, message = 403, "forbidden", "Permission denied."
 	case errors.Is(err, rbac.ErrNotFound):
@@ -138,6 +145,7 @@ func (s *server) visibleID(c fiber.Ctx) (uuid.UUID, error) {
 }
 func (s *server) registerAdmin(app *fiber.App) {
 	handlers := map[string]fiber.Handler{
+		"connections": s.connections, "unitConnections": s.connections, "connection": s.connection, "createConnection": s.createConnection, "updateConnection": s.updateConnection, "connectionPassword": s.connectionPassword, "deleteConnection": s.deleteConnection, "previewConnectionDelete": s.previewConnectionDelete, "testConnection": s.testConnection, "syncConnection": s.syncConnection, "snapshots": s.snapshots, "snapshot": s.snapshot, "schema": s.schema,
 		"profile": s.profile, "updateProfile": s.updateProfile, "changePassword": s.changePassword, "ownSessions": s.ownSessions, "revokeOtherSessions": s.revokeOtherSessions, "revokeOwnSession": s.revokeOwnSession, "myAccess": s.myAccess,
 		"managedUsers": s.managedUsers, "deactivateUser": s.deactivateUser, "reactivateUser": s.reactivateUser, "createPasswordReset": s.createPasswordReset, "inspectPasswordReset": s.inspectPasswordReset, "resetPassword": s.resetPassword,
 		"createInvite": s.createInvite, "invites": s.invites, "revokeInvite": s.revokeInvite, "regenerateInvite": s.regenerateInvite, "inspectInvite": s.inspectInvite, "acceptInvite": s.acceptInvite,
@@ -464,11 +472,20 @@ func (s *server) assign(c fiber.Ctx) error {
 	if err != nil {
 		return s.adminError(c, err)
 	}
-	if input.Scope.Type != rbac.ScopeUnit {
+	if input.Scope.Type != rbac.ScopeUnit && input.Scope.Type != rbac.ScopeConnection {
 		return s.adminError(c, rbac.ErrForbidden)
 	}
-	if _, err := s.RBAC.VisibleUnit(c.Context(), actorUUID(c), input.Scope.ID); err != nil {
-		return s.adminError(c, err)
+	if input.Scope.Type == rbac.ScopeUnit {
+		if _, err := s.RBAC.VisibleUnit(c.Context(), actorUUID(c), input.Scope.ID); err != nil {
+			return s.adminError(c, err)
+		}
+	} else {
+		if s.Connections == nil {
+			return s.adminError(c, rbac.ErrUnavailable)
+		}
+		if _, err := s.Connections.Get(c.Context(), actorUUID(c), input.Scope.ID); err != nil {
+			return s.adminError(c, err)
+		}
 	}
 	allowed, err := s.RBAC.Engine().CanAssign(c.Context(), actorUUID(c), input.RoleID, input.Scope)
 	if errors.Is(err, rbac.ErrNotFound) {
@@ -484,18 +501,11 @@ func (s *server) assign(c fiber.Ctx) error {
 	if err != nil {
 		return s.adminError(c, err)
 	}
-	members, err := s.RBAC.Members(c.Context(), actorUUID(c), input.Scope.ID, true, false)
+	item, err := s.RBAC.AssignmentProjection(c.Context(), actorUUID(c), assignment)
 	if err != nil {
 		return s.adminError(c, err)
 	}
-	for _, member := range members {
-		for _, item := range member.Assignments {
-			if item.ID != nil && *item.ID == assignment.ID {
-				return respond(c, api.AssignmentResponse{Assignment: item})
-			}
-		}
-	}
-	return s.adminError(c, rbac.ErrForbidden)
+	return respond(c, api.AssignmentResponse{Assignment: item})
 }
 func (s *server) revoke(c fiber.Ctx) error {
 	id, err := pathID(c)

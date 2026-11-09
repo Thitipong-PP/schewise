@@ -20,11 +20,35 @@ services:
       retries: 10
     init: true
 
+  demo-db:
+    image: postgres:18-alpine
+    profiles: [demo]
+    environment:
+      POSTGRES_DB: schewise_demo
+      POSTGRES_PASSWORD: ${DEMO_POSTGRES_PASSWORD:-synthetic-demo-postgres-password}
+      DEMO_DATABASE_PASSWORD: ${DEMO_DATABASE_PASSWORD:-synthetic-demo-reader-password}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - demo-postgres-data:/var/lib/postgresql
+      - ./deploy/postgres/demo-init.sql:/docker-entrypoint-initdb.d/10-demo.sql:ro
+      - ./deploy/postgres/demo.sql:/fixtures/demo.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d schewise_demo"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    init: true
+
   api:
     build:
       context: .
       dockerfile: cmd/api/Dockerfile.dev
     environment:
+      SCHEWISE_SECRET_KEY: ${SCHEWISE_SECRET_KEY:-}
+      SCHEWISE_STATEMENT_TIMEOUT: ${SCHEWISE_STATEMENT_TIMEOUT:-30s}
+      SCHEWISE_CONNECTION_HOST_ALLOW: ${SCHEWISE_CONNECTION_HOST_ALLOW:-}
+      SCHEWISE_CONNECTION_HOST_DENY: ${SCHEWISE_CONNECTION_HOST_DENY:-}
       SCHEWISE_HTTP_ADDR: "0.0.0.0:8080"
       SCHEWISE_ORIGIN: ${SCHEWISE_ORIGIN:-https://localhost:8443}
       SCHEWISE_ADMIN_EMAIL: ${SCHEWISE_ADMIN_EMAIL:?Run make init first}
@@ -94,6 +118,7 @@ services:
     init: true
 
 volumes:
+  demo-postgres-data:
   go-modules:
   go-build:
   postgres-data:

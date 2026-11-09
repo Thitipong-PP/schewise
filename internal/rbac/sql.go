@@ -27,7 +27,7 @@ type Connection struct {
 // ConnectionResolver must resolve one owner per connection and enumerate all
 // connections in the supplied units using the same transaction. Future ownership
 // mutations must participate in Lock, just like unit/assignment mutations.
-// No implementation or target database connection is installed in Step 2A.
+// The default implementation reads application connection ownership metadata.
 type ConnectionResolver interface {
 	Owner(context.Context, Queryer, uuid.UUID) (uuid.UUID, error)
 	InUnits(context.Context, Queryer, []uuid.UUID) ([]Connection, error)
@@ -39,6 +39,9 @@ type SQLReader struct {
 }
 
 func NewSQLReader(db Queryer, connections ConnectionResolver) *SQLReader {
+	if connections == nil {
+		connections = SQLConnectionResolver{}
+	}
 	return &SQLReader{db: db, connections: connections}
 }
 

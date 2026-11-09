@@ -4,8 +4,9 @@
 
 Steps 2A and 2B implement application metadata, authorization in Go, and
 permission-gated administration APIs and UI. Authentication uses the same
-engine. Invitations, account settings, deactivation endpoints, target
-connections, and database/AI features are not part of these steps.
+engine. Later steps add invitations, account settings, deactivation, and
+PostgreSQL connections using the same engine. Data and AI features remain
+planned.
 
 ## Units, roles, and assignments
 
@@ -28,8 +29,8 @@ The catalog is defined in `internal/rbac/model.go`: `user:manage`,
 `role:manage`, `audit:read`, `unit:read`, `unit:manage`, `unit:manage_members`,
 `connection:read`, `connection:manage`, `schema:read`, `docs:edit`,
 `tag:manage`, `ai:run`, `data:preview`, and `data:query`. These names reserve
-permissions for future features; they do not implement connectors, queries, or
-AI functionality.
+permissions for planned capabilities as well as implemented connection/schema
+access. Data queries, tagging, and AI functionality remain unimplemented.
 
 An assignment links a user and role to a unit or connection, with an optional
 note, creator, and timestamp. Membership is derived from assignments; there is
@@ -128,12 +129,13 @@ downgrade is refused because dropping boundaries would silently broaden access.
 The code scope registry accepts only `unit` and `connection`.
 `ConnectionResolver` resolves a connection to exactly one owning unit and lists
 connections in specified units using the repository's query/transaction handle.
-No connection table, foreign key, adapter implementation, wire protocol, or real
-database connection is introduced here. The default engine fails closed for
-connection authorization and assignment until an ownership adapter exists. Tests
-use a synthetic adapter for connection inheritance and impact reporting. Future
-connection ownership mutations must join the shared lock protocol and preserve
-exactly one owning unit.
+Step 5 supplies the default SQL resolver and a real connection table. A
+connection must exist before it can receive a scoped assignment; a generated FK
+validates that invariant and cascades only its direct assignments on deletion.
+Unit deletion is blocked while it owns connections; move/inheritance previews
+include them. Profile ownership is immutable through editing and follows unit
+moves. All metadata writes join the shared lock protocol. See
+[connections](connections.md) for connection permissions and target safety.
 
 ## Impact previews
 
@@ -200,11 +202,12 @@ returns the impact before confirmation. Both require a readable unit and
 `unit:manage_members`. The revoke route calls `CanRevoke` through the authorized
 assignment lookup and again under the store's write lock.
 
-Connection resources are deliberately unavailable through these new endpoints
-until a real ownership adapter is implemented. The OpenAPI document specifies
-request/response schemas and query parameters. PATCH requests replace the
-editable metadata fields; the UI submits the complete form. Delete never
-cascades into child units, assignments, or connections.
+Step 5 enables real connection scopes for assignments and Explain. The OpenAPI
+document specifies request/response schemas and query parameters. PATCH requests
+replace editable metadata fields; the UI submits the complete form. Unit delete
+never cascades into child units, assignments, or connections. Confirmed
+connection delete has its own narrowly scoped cascade described in
+[connections](connections.md).
 
 Organization is the protected `/` page. `/roles` manages custom roles with a
 permission catalog grouped by area and distinct-user/assignment counts.

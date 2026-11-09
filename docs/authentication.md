@@ -1,9 +1,9 @@
 # Authentication and application storage
 
 Schewise uses a dedicated PostgreSQL application database for users, roles,
-sessions, and audit events. It is separate from future user-connected target
-databases. Goose applies embedded migrations at API startup with a Postgres
-advisory session lock.
+sessions, and audit events. It is separate from user-connected target databases.
+Goose applies embedded migrations at API startup with a Postgres advisory
+session lock.
 
 ## First installation and HTTPS
 

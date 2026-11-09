@@ -177,3 +177,44 @@ test("resource search filters only server-evaluated effective access", () => {
     [],
   );
 });
+
+test("schema search matches schema, table and column names without regex interpretation", async () => {
+  const { matchingTables } = await import("../src/lib/schema-model.ts");
+  const schema = {
+    name: "Commerce",
+    tables: [
+      { name: "Orders", columns: [{ name: "customer_id" }] },
+      { name: "Customers", columns: [{ name: "email.address" }] },
+    ],
+  };
+  assert.deepEqual(
+    matchingTables(schema, "CUSTOMER_ID").map((t) => t.name),
+    ["Orders"],
+  );
+  assert.equal(matchingTables(schema, "commerce").length, 2);
+  assert.deepEqual(
+    matchingTables(schema, "email.address").map((t) => t.name),
+    ["Customers"],
+  );
+  assert.equal(matchingTables(schema, "[invalid").length, 0);
+  assert.equal(matchingTables(schema, "   ").length, 2);
+});
+test("declared FK links require the exact schema/table, and unknown estimates remain distinct from zero", async () => {
+  const { hasReferencedTable, estimateLabel } =
+    await import("../src/lib/schema-model.ts");
+  const schemas = [
+    { name: "sales", tables: [{ name: "orders" }] },
+    { name: "other", tables: [{ name: "customers" }] },
+  ];
+  assert.equal(
+    hasReferencedTable(schemas, { schema: "sales", table: "customers" }),
+    false,
+  );
+  assert.equal(
+    hasReferencedTable(schemas, { schema: "other", table: "customers" }),
+    true,
+  );
+  assert.equal(estimateLabel(-1), "Not analyzed");
+  assert.equal(estimateLabel(0), "0");
+  assert.equal(estimateLabel(undefined), "Not analyzed");
+});

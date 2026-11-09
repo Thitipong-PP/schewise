@@ -12,16 +12,19 @@ import (
 )
 
 type Config struct {
-	Address        string
-	DatabaseURL    string
-	Origin         string
-	AdminEmail     string
-	AdminPassword  string
-	SessionTTL     time.Duration
-	PublicBaseURL  string
-	InviteTTL      time.Duration
-	ResetTTL       time.Duration
-	StoreSessionIP bool
+	Address             string
+	DatabaseURL         string
+	Origin              string
+	AdminEmail          string
+	AdminPassword       string
+	SessionTTL          time.Duration
+	PublicBaseURL       string
+	InviteTTL           time.Duration
+	ResetTTL            time.Duration
+	StoreSessionIP      bool
+	SecretKey           string
+	StatementTimeout    time.Duration
+	HostAllow, HostDeny []string
 }
 
 func env(key, fallback string) string {
@@ -70,6 +73,16 @@ func Load() (Config, error) {
 		}
 	}
 	c.DatabaseURL = os.Getenv("SCHEWISE_DATABASE_URL")
+	c.SecretKey = os.Getenv("SCHEWISE_SECRET_KEY")
+	c.StatementTimeout = 30 * time.Second
+	if value := os.Getenv("SCHEWISE_STATEMENT_TIMEOUT"); value != "" {
+		c.StatementTimeout, err = time.ParseDuration(value)
+		if err != nil || c.StatementTimeout < time.Second || c.StatementTimeout > 5*time.Minute {
+			return c, errors.New("SCHEWISE_STATEMENT_TIMEOUT must be between 1s and 5m")
+		}
+	}
+	c.HostAllow = strings.Split(os.Getenv("SCHEWISE_CONNECTION_HOST_ALLOW"), ",")
+	c.HostDeny = strings.Split(os.Getenv("SCHEWISE_CONNECTION_HOST_DENY"), ",")
 	if c.DatabaseURL == "" {
 		password := os.Getenv("PGPASSWORD")
 		if password == "" {

@@ -102,9 +102,10 @@ type ExplanationView struct {
 	ReasonText string           `json:"reason_text"`
 }
 type AccessContext struct {
-	User            UserInfo     `json:"user"`
-	RootPermissions []Permission `json:"root_permissions"`
-	CanReadUnits    bool         `json:"can_read_units"`
+	User               UserInfo     `json:"user"`
+	RootPermissions    []Permission `json:"root_permissions"`
+	CanReadUnits       bool         `json:"can_read_units"`
+	CanReadConnections bool         `json:"can_read_connections"`
 }
 
 type cachedReader struct {
@@ -185,7 +186,11 @@ func (v *view) can(ctx context.Context, p Permission, scope Scope) (bool, error)
 	return v.engine.Can(ctx, v.actor, p, scope)
 }
 func (v *view) readable(ctx context.Context, scope Scope) (bool, error) {
-	allowed, err := v.can(ctx, UnitRead, scope)
+	permission := UnitRead
+	if scope.Type == ScopeConnection {
+		permission = ConnectionRead
+	}
+	allowed, err := v.can(ctx, permission, scope)
 	if errors.Is(err, ErrNotFound) || errors.Is(err, ErrInvalidScope) || errors.Is(err, ErrUnavailable) {
 		return false, nil
 	}
@@ -316,7 +321,49 @@ func (r *Repository) Context(ctx context.Context, actor uuid.UUID) (AccessContex
 			return err
 		}
 		result.CanReadUnits = len(units) > 0
-		if !result.CanReadUnits && len(result.RootPermissions) == 0 {
+		rows, err := v.q.QueryContext(ctx, `SELECT id FROM connections ORDER BY id`)
+		if err != nil {
+			return err
+		}
+		ids := []uuid.UUID{}
+		for rows.Next() {
+			var id uuid.UUID
+			if err := rows.Scan(&id); err != nil {
+				rows.Close()
+				return err
+			}
+			ids = append(ids, id)
+		}
+		err = rows.Err()
+		rows.Close()
+		if err != nil {
+			return err
+		}
+		for _, id := range ids {
+			allowed, err := v.can(ctx, ConnectionRead, Scope{Type: ScopeConnection, ID: id})
+			if err != nil {
+				return err
+			}
+			if allowed {
+				result.CanReadConnections = true
+				break
+			}
+		}
+		if !result.CanReadConnections {
+			for _, p := range result.RootPermissions {
+				if p == ConnectionRead || p == ConnectionManage {
+					result.CanReadConnections = true
+				}
+			}
+			for _, unit := range units {
+				for _, p := range unit.Permissions {
+					if p == ConnectionRead || p == ConnectionManage {
+						result.CanReadConnections = true
+					}
+				}
+			}
+		}
+		if !result.CanReadUnits && !result.CanReadConnections && len(result.RootPermissions) == 0 {
 			return ErrForbidden
 		}
 		result.User, err = userInfo(ctx, v.q, actor)

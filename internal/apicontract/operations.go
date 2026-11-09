@@ -4,6 +4,7 @@ package apicontract
 
 import (
 	"github.com/Thitipong-PP/schewise/internal/auth"
+	"github.com/Thitipong-PP/schewise/internal/connections"
 	"github.com/Thitipong-PP/schewise/internal/rbac"
 )
 
@@ -24,6 +25,19 @@ type Operation struct {
 
 func Operations() []Operation {
 	return []Operation{
+		{ID: "connections", Method: "GET", Path: "/api/v1/connections", Summary: "List readable connections; redact destination details without manage permission", Status: 200, Response: connections.List{}, Query: []Query{{"unit_id", "uuid", "Optional owning unit"}}},
+		{ID: "unitConnections", Method: "GET", Path: "/api/v1/units/{id}/connections", Summary: "List readable connections owned by a readable unit", Status: 200, Response: connections.List{}},
+		{ID: "createConnection", Method: "POST", Path: "/api/v1/connections", Summary: "Create an encrypted PostgreSQL profile in a manageable unit", Status: 201, Request: connections.CreateInput{}, Response: connections.Result{}},
+		{ID: "connection", Method: "GET", Path: "/api/v1/connections/{id}", Summary: "Read permitted connection metadata", Status: 200, Response: connections.Result{}},
+		{ID: "updateConnection", Method: "PATCH", Path: "/api/v1/connections/{id}", Summary: "Update a connection without changing its owner or password", Status: 200, Request: connections.Input{}, Response: connections.Result{}},
+		{ID: "connectionPassword", Method: "POST", Path: "/api/v1/connections/{id}/password", Summary: "Replace the encrypted target password separately", Status: 200, Request: connections.PasswordInput{}, Response: connections.Result{}},
+		{ID: "previewConnectionDelete", Method: "POST", Path: "/api/v1/connections/{id}/dry-run/delete", Summary: "Preview snapshots and direct access removed by deletion", Status: 200, Request: EmptyRequest{}, Response: connections.DeleteImpact{}},
+		{ID: "deleteConnection", Method: "DELETE", Path: "/api/v1/connections/{id}", Summary: "Delete confirmed connection metadata atomically without touching the target", Status: 204, Request: connections.DeleteInput{}},
+		{ID: "testConnection", Method: "POST", Path: "/api/v1/connections/{id}/test", Summary: "Test read-only connectivity and return a sanitized result", Status: 200, Request: EmptyRequest{}, Response: connections.OperationResult{}},
+		{ID: "syncConnection", Method: "POST", Path: "/api/v1/connections/{id}/sync", Summary: "Introspect catalogs and refresh structural history and volatile stats", Status: 200, Request: EmptyRequest{}, Response: connections.OperationResult{}},
+		{ID: "snapshots", Method: "GET", Path: "/api/v1/connections/{id}/snapshots", Summary: "List authorized structural snapshots with keyset pagination", Status: 200, Response: connections.Snapshots{}, Query: []Query{{"before", "uuid", "Previous page cursor"}, {"limit", "integer", "Page size 1–200, default 50"}}},
+		{ID: "schema", Method: "GET", Path: "/api/v1/connections/{id}/schema", Summary: "Read the latest normalized structure and refreshed statistics", Status: 200, Response: connections.Snapshot{}},
+		{ID: "snapshot", Method: "GET", Path: "/api/v1/connections/{id}/snapshots/{sid}", Summary: "Read an authorized snapshot from this connection", Status: 200, Response: connections.Snapshot{}},
 		{ID: "csrf", Method: "GET", Path: "/api/v1/auth/csrf", Summary: "Initialize the existing synchronizer CSRF session", Response: CSRFResponse{}, Status: 200, Existing: true, Public: true},
 		{ID: "identity", Method: "GET", Path: "/api/v1/auth/me", Summary: "Read the authenticated identity", Response: IdentityResponse{}, Status: 200, Existing: true},
 		{ID: "createInvite", Method: "POST", Path: "/api/v1/invites", Summary: "Create an authorized invitation and return its link once", Request: auth.InviteInput{}, Response: auth.InviteLink{}, Status: 201},
